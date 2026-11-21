@@ -292,14 +292,19 @@ static void wifi_event_handler(void *arg, esp_event_base_t base,
 // ---------------------------------------------------------------------------
 
 /* Retries the last network every 5 s after a failed or timed-out attempt. After
- * ~1 min of failures, or when no saved network was in range, it rescans every
- * 15 s and joins the best saved network that appears (the boat AP usually comes
- * up well after the panel). Runs in its own task: the ESP-Hosted RPC calls need
- * more stack than the timer task has. */
+ * ~1 min of failures, or when no saved network was in range, it rescans (every
+ * 5 s for the first 3 min after power-on, then every 15 s) and joins the best
+ * saved network that appears (the boat AP usually comes up well after the
+ * panel). Runs in its own task: the ESP-Hosted RPC calls need more stack than
+ * the timer task has. */
+static int search_interval_s()
+{
+    return esp_timer_get_time() < 180LL * 1000000 ? 5 : 15;
+}
+
 static void retry_task(void *)
 {
     const int RETRIES_BEFORE_SEARCH = 12;
-    const int SEARCH_INTERVAL_S = 15;
     int waited = 0;
     int retries = 0;
     int search_wait = 0;
@@ -319,7 +324,7 @@ static void retry_task(void *)
                 if (wifi_manager_connect_saved()) retries = 0;
                 continue;
             }
-            if (++search_wait < SEARCH_INTERVAL_S) continue;
+            if (++search_wait < search_interval_s()) continue;
             search_wait = 0;
             search_scan = wifi_manager_scan_start();
             continue;
@@ -338,7 +343,7 @@ static void retry_task(void *)
             s_auto_retry = false;
             s_search_saved = true;
             s_state = WIFI_MGR_DISCONNECTED;
-            search_wait = SEARCH_INTERVAL_S;
+            search_wait = search_interval_s();
             continue;
         }
         ESP_LOGI(TAG, "Retrying \"%s\" (%s)...", s_connecting_ssid, s_error);
@@ -434,8 +439,8 @@ bool wifi_manager_connect_saved(void)
         }
     }
 
-    ESP_LOGI(TAG, "No saved networks in range (%d saved, %d scanned), rescanning every 15 s",
-             saved_count, s_scan_count);
+    ESP_LOGI(TAG, "No saved networks in range (%d saved, %d scanned), rescanning every %d s",
+             saved_count, s_scan_count, search_interval_s());
     s_search_saved = true;
     return false;
 }
