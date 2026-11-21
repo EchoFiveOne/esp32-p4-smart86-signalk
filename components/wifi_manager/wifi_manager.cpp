@@ -27,6 +27,7 @@ static char s_error[64] = {};
 static wifi_mgr_on_ip_cb_t s_on_ip_cb = nullptr;
 static volatile bool s_intentional_disconnect = false;  /* suppress event during connect() */
 static volatile bool s_auto_retry = false;              /* keep retrying the last network after failures */
+static volatile bool s_search_saved = false;            /* rescan until a saved network appears */
 
 static WifiScanResult s_scan_results[WIFI_MGR_MAX_SCAN];
 static int s_scan_count = 0;
@@ -231,8 +232,11 @@ static void wifi_event_handler(void *arg, esp_event_base_t base,
                 if (disc->reason == 15 || disc->reason == 204) s_auto_retry = false;
                 ESP_LOGW(TAG, "Connection to \"%s\" failed: %s", s_connecting_ssid, s_error);
             } else if (s_state == WIFI_MGR_CONNECTED) {
-                s_state = WIFI_MGR_DISCONNECTED;
+                /* Treat as a new attempt so a failure lands in the retry loop
+                 * (e.g. the access point is rebooting) */
                 s_error[0] = '\0';
+                s_state = WIFI_MGR_CONNECTING;
+                if (s_timeout_timer) xTimerReset(s_timeout_timer, 0);
                 esp_wifi_connect();
             }
             s_connected_ssid[0] = '\0';
@@ -287,19 +291,56 @@ static void wifi_event_handler(void *arg, esp_event_base_t base,
 // Public API
 // ---------------------------------------------------------------------------
 
-/* Retries the last network every 5 s after a failed or timed-out attempt (runs in
- * its own task: the ESP-Hosted RPC calls need more stack than the timer task has). */
+/* Retries the last network every 5 s after a failed or timed-out attempt. After
+ * ~1 min of failures, or when no saved network was in range, it rescans every
+ * 15 s and joins the best saved network that appears (the boat AP usually comes
+ * up well after the panel). Runs in its own task: the ESP-Hosted RPC calls need
+ * more stack than the timer task has. */
 static void retry_task(void *)
 {
+    const int RETRIES_BEFORE_SEARCH = 12;
+    const int SEARCH_INTERVAL_S = 15;
     int waited = 0;
+    int retries = 0;
+    int search_wait = 0;
+    bool search_scan = false;
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(1000));
+
+        if (s_state == WIFI_MGR_CONNECTED) {
+            retries = 0;
+            search_scan = false;
+        }
+
+        if (s_state == WIFI_MGR_DISCONNECTED && s_search_saved) {
+            if (search_scan) {
+                if (s_scanning || !s_scan_done) continue;
+                search_scan = false;
+                if (wifi_manager_connect_saved()) retries = 0;
+                continue;
+            }
+            if (++search_wait < SEARCH_INTERVAL_S) continue;
+            search_wait = 0;
+            search_scan = wifi_manager_scan_start();
+            continue;
+        }
+        search_wait = 0;
+
         if (s_state != WIFI_MGR_CONNECT_FAILED || !s_auto_retry || !s_connecting_ssid[0]) {
             waited = 0;
             continue;
         }
         if (++waited < 5) continue;
         waited = 0;
+        if (++retries > RETRIES_BEFORE_SEARCH) {
+            ESP_LOGI(TAG, "\"%s\" still unavailable, scanning for saved networks", s_connecting_ssid);
+            retries = 0;
+            s_auto_retry = false;
+            s_search_saved = true;
+            s_state = WIFI_MGR_DISCONNECTED;
+            search_wait = SEARCH_INTERVAL_S;
+            continue;
+        }
         ESP_LOGI(TAG, "Retrying \"%s\" (%s)...", s_connecting_ssid, s_error);
         s_state = WIFI_MGR_CONNECTING;
         if (esp_wifi_connect() != ESP_OK) {
@@ -393,8 +434,9 @@ bool wifi_manager_connect_saved(void)
         }
     }
 
-    ESP_LOGI(TAG, "No saved networks in range (%d saved, %d scanned)",
+    ESP_LOGI(TAG, "No saved networks in range (%d saved, %d scanned), rescanning every 15 s",
              saved_count, s_scan_count);
+    s_search_saved = true;
     return false;
 }
 
@@ -427,6 +469,7 @@ bool wifi_manager_connect(const char *ssid, const char *password)
 
     s_state = WIFI_MGR_CONNECTING;
     s_auto_retry = true;
+    s_search_saved = false;
 
     wifi_config_t wifi_cfg = {};
     strncpy((char *)wifi_cfg.sta.ssid, ssid, sizeof(wifi_cfg.sta.ssid) - 1);
@@ -448,6 +491,7 @@ bool wifi_manager_connect(const char *ssid, const char *password)
 void wifi_manager_disconnect(void)
 {
     s_auto_retry = false;
+    s_search_saved = false;
     if (s_timeout_timer) xTimerStop(s_timeout_timer, 0);
     esp_wifi_disconnect();
     s_state = WIFI_MGR_DISCONNECTED;
