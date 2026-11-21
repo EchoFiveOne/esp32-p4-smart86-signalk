@@ -10,7 +10,7 @@ dependencies:
       type: service
     version: 0.5.3
   espressif/eppp_link:
-    component_hash: 04f7f31868b8ae6014c96132740a192d09611a6e46aaa7038c865ffc7e26b38f
+    component_hash: c1369b37f2b0b427b198ae14e07e7547d3da92b95fe4dc7f949e5de560b35f21
     dependencies:
     - name: espressif/esp_serial_slave_link
       registry_url: https://components.espressif.com
@@ -22,7 +22,7 @@ dependencies:
     source:
       registry_url: https://components.espressif.com
       type: service
-    version: 1.1.5
+    version: 1.1.6
   espressif/esp-ui:
     component_hash: a373a43c74a655849c91acade449f430604dd8550314d9e6748b8ed9b14573c0
     dependencies:
@@ -41,6 +41,78 @@ dependencies:
       registry_url: https://components.espressif.com/
       type: service
     version: 0.2.1
+  espressif/esp_board_manager:
+    component_hash: af9d7a914a5682933224358f79f1120d55e11f054eda0d015890718d50652252
+    dependencies:
+    - matches:
+      - if: $CONFIG{ESP_BOARD_DEV_BUTTON_SUPPORT} == True
+      name: espressif/button
+      registry_url: https://components.espressif.com
+      require: private
+      version: ^4.1.4
+    - name: espressif/esp_boards
+      registry_url: https://components.espressif.com
+      require: private
+      version: ~0.7.3
+    - matches:
+      - if: $CONFIG{ESP_BOARD_DEV_AUDIO_CODEC_SUPPORT} == True
+      name: espressif/esp_codec_dev
+      registry_url: https://components.espressif.com
+      require: private
+      version: ^2.0.0-beta4
+    - matches:
+      - if: $CONFIG{ESP_BOARD_DEV_GPIO_EXPANDER_SUPPORT} == True
+      name: espressif/esp_io_expander
+      registry_url: https://components.espressif.com
+      require: private
+      version: ^1.2.1
+    - matches:
+      - if: $CONFIG{ESP_BOARD_DEV_DISPLAY_LCD_SUB_RGB_3WIRE_SPI_SUPPORT} == True
+      name: espressif/esp_lcd_panel_io_additions
+      registry_url: https://components.espressif.com
+      require: private
+      version: ^1.0.0
+    - matches:
+      - if: $CONFIG{ESP_BOARD_DEV_LCD_TOUCH_SUPPORT} == True
+      name: espressif/esp_lcd_touch
+      registry_url: https://components.espressif.com
+      require: private
+      version: '*'
+    - matches:
+      - if: $CONFIG{ESP_BOARD_DEV_CAMERA_SUPPORT} == True
+      name: espressif/esp_video
+      registry_url: https://components.espressif.com
+      require: private
+      version: ^2.3.0
+    - matches:
+      - if: $CONFIG{ESP_BOARD_DEV_KNOB_SUPPORT} == True
+      name: espressif/knob
+      registry_url: https://components.espressif.com
+      require: private
+      version: ^1.1.0
+    - matches:
+      - if: $CONFIG{ESP_BOARD_DEV_LED_STRIP_SUPPORT} == True
+      name: espressif/led_strip
+      registry_url: https://components.espressif.com
+      require: private
+      version: '*'
+    - matches:
+      - if: $CONFIG{ESP_BOARD_DEV_LITTLEFS_SUPPORT} == True
+      name: joltwallet/littlefs
+      registry_url: https://components.espressif.com
+      require: private
+      version: ^1.22.1
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 0.7.6
+  espressif/esp_boards:
+    component_hash: 1c8a80515405a0417e8d3437a00925b9f443da06b9fe8379f6b1c3abd50437f4
+    dependencies: []
+    source:
+      registry_url: https://components.espressif.com
+      type: service
+    version: 0.7.3
   espressif/esp_codec_dev:
     component_hash: 014948481bda426cd46714f297fe1891711246c62bea288863a8cc8cf13ef1f0
     dependencies:
@@ -61,6 +133,22 @@ dependencies:
       registry_url: https://components.espressif.com/
       type: service
     version: 2.12.3
+  espressif/esp_lcd_jd9365:
+    component_hash: ca0517ca0aaccac53e1eb572fbfc8262086401875a4823862b8bca475843db1a
+    dependencies:
+    - name: espressif/cmake_utilities
+      registry_url: https://components.espressif.com
+      require: private
+      version: 0.*
+    - name: idf
+      require: private
+      version: '>=5.4'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    targets:
+    - esp32p4
+    version: 2.0.2
   espressif/esp_lcd_touch:
     component_hash: 3f85a7d95af876f1a6ecca8eb90a81614890d0f03a038390804e5a77e2caf862
     dependencies:
@@ -68,11 +156,11 @@ dependencies:
       require: private
       version: '>=4.4.2'
     source:
-      registry_url: https://components.espressif.com
+      registry_url: https://components.espressif.com/
       type: service
     version: 1.2.1
   espressif/esp_lcd_touch_gt911:
-    component_hash: 6029febef66eefd0910d527d7f30292779ccbf22a8dedd2bd69466acf0068a7b
+    component_hash: 737bdf29e0823eacf041381e81db2aaf5d378f3b5417df7f415f83319e3e790b
     dependencies:
     - name: espressif/esp_lcd_touch
       registry_url: https://components.espressif.com
@@ -84,13 +172,13 @@ dependencies:
     source:
       registry_url: https://components.espressif.com
       type: service
-    version: 1.2.0~2
+    version: 1.2.1
   espressif/esp_lvgl_port:
-    component_hash: b6360960f47b6776462e7092861b3ea66477ffb762a01baa0aecbb3d74cd50f4
+    component_hash: d3c020b45c3dfc0d1706a83b63a1c34a6eb444a6e935f9afff79f92b7b94dcef
     dependencies:
     - name: idf
       require: private
-      version: '>=5.1'
+      version: '>=5.2'
     - name: lvgl/lvgl
       registry_url: https://components.espressif.com
       require: public
@@ -98,7 +186,7 @@ dependencies:
     source:
       registry_url: https://components.espressif.com
       type: service
-    version: 2.7.2
+    version: 2.9.0
   espressif/esp_serial_slave_link:
     component_hash: ac1776806de0a6e371c84e87898bb983e19ce62aa7f1e2e5c4a3b0234a575d2c
     dependencies:
@@ -150,23 +238,33 @@ dependencies:
       type: service
     version: 1.11.0
   espressif/wifi_remote_over_eppp:
-    component_hash: 06d8bc15348bbd21f1390daace36ed5adcf6026c93c5b69decc55fa04df2711a
+    component_hash: 1fd6968af20f0b19e421f6b519b0a8caf81d689afc3783b564c28559e45f66ef
     dependencies:
-    - name: idf
-      require: private
-      version: '>=5.3'
     - name: espressif/eppp_link
       registry_url: https://components.espressif.com
       require: private
       version: '>=0.1'
+    - name: idf
+      require: private
+      version: '>=5.3'
     source:
       registry_url: https://components.espressif.com
       type: service
-    version: 0.3.2
+    version: 0.3.3
   idf:
     source:
       type: idf
-    version: 5.4.0
+    version: 5.5.6
+  joltwallet/littlefs:
+    component_hash: e1a0f4a6adf821759cb34703a91107bbdce5d7ff6f4728f40ab012bb87842974
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.23.1
   lvgl/lvgl:
     component_hash: d7c1ac037ae6e85d94897f807d6e7ba0946a83e720074fc95a4f6241da9f9f53
     dependencies: []
@@ -207,7 +305,7 @@ dependencies:
     - esp32p4
     version: 1.0.1
   waveshare/esp_lcd_st7703:
-    component_hash: 0ee99c4d38d5742f554fa10f0cc17a74529d623fb0ebdb0e9bfac1703f1d4442
+    component_hash: d82de85750df3c6c9bfae4c49fdf8cc443e2387cb19507081968f71c11976378
     dependencies:
     - name: espressif/cmake_utilities
       registry_url: https://components.espressif.com
@@ -217,19 +315,36 @@ dependencies:
       require: private
       version: '>=5.3'
     source:
-      registry_url: https://components.espressif.com
+      registry_url: https://components.espressif.com/
       type: service
     targets:
     - esp32p4
-    version: 1.0.5
+    version: 2.0.0
+  waveshare/waveshare_boards:
+    component_hash: 61f49cec9f87dcc2c62aa0cfe9fa0d4b54e48027445652a1628e840a6ff36ee9
+    dependencies:
+    - name: espressif/esp_board_manager
+      registry_url: https://components.espressif.com
+      require: private
+      version: '>=0.7.5'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 0.3.5
 direct_dependencies:
 - espressif/esp-ui
+- espressif/esp_board_manager
 - espressif/esp_hosted
+- espressif/esp_lcd_jd9365
+- espressif/esp_lcd_touch
 - espressif/esp_websocket_client
 - espressif/esp_wifi_remote
 - espressif/mdns
 - idf
+- joltwallet/littlefs
 - waveshare/esp32_p4_wifi6_touch_lcd_4b
-manifest_hash: 93e7f84c0adc43cd05af4254766cf58ab34887844bb4442b6369298d789cb215
+- waveshare/esp_lcd_st7703
+- waveshare/waveshare_boards
+manifest_hash: acdfe31f8fc03848e31a82e30e77596ab1004b4480749cbb4dde6722f562555b
 target: esp32p4
 version: 2.0.0

@@ -9,4 +9,5 @@ idf_component_register(
         log
     PRIV_REQUIRES
         lvgl__lvgl
+        signalk_auth
 )

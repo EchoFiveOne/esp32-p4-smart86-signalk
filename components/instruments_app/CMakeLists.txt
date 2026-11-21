@@ -1,0 +1,41 @@
+idf_component_register(
+    SRCS
+        "instruments_app.cpp"
+        "dash_model.cpp"
+        "dash_engine.cpp"
+        "dash_web.cpp"
+        "sk_catalog.cpp"
+        "tides.cpp"
+        "lv_font_inst_44.c"
+        "lv_font_inst_56.c"
+        "lv_font_inst_72.c"
+        "lv_font_inst_92.c"
+        "lv_font_inst_116.c"
+        "lv_font_inst_144.c"
+        "lv_font_inst_176.c"
+        "lv_font_inst_label_36.c"
+        "lv_font_inst_label_30.c"
+        "lv_font_montserrat_120.c"
+        "lv_font_montserrat_310.c"
+        "lv_font_montserrat_360.c"
+        "instruments_icon.c"
+    INCLUDE_DIRS "."
+    EMBED_TXTFILES "dash_editor.html"
+    REQUIRES
+        signalk_client
+        signalk_auth
+        unit_config
+        day_night
+        audio_feedback
+        espressif__esp-ui
+        lvgl__lvgl
+        esp_lvgl_port
+        esp_http_client
+        esp_http_server
+        esp_netif
+        esp_timer
+        nvs_flash
+        json
+        log
+        joltwallet__littlefs
+)

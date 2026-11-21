@@ -91,10 +91,16 @@ components/
     signalk_client.hpp           ← InstrumentStore (flat PathValue array), connection state, public API
     signalk_client.cpp           ← esp_websocket_client, cJSON delta parser, observer (watch), subscribe/unsubscribe
     sk_logo_alpha.h              ← 120×85 alpha map of SignalK logo (generated from official PNG)
-  data_browser_app/              ← Dynamic SignalK path browser (HTTP discovery + live values)
-    data_browser_app.hpp         ← ESP_UI_PhoneApp subclass, two-view (list + detail)
-    data_browser_app.cpp         ← HTTP path fetch, lv_list index, observer-driven value display
-    lv_font_montserrat_*.c       ← custom fonts: 90px (degree), 210px (4+ chars), 310px (3 chars), 360px (1-2 chars)
+  instruments_app/               ← i70/Triton2-style multi-page grid dashboard (see docs/INSTRUMENTS.md)
+    dash_model.*                 ← config, layouts, unit formatting, JSON, LittleFS persistence (/dash)
+    dash_engine.*                ← 250 ms timer from boot: subscriptions, smoothing, min/max, trend, alarms
+    sk_catalog.*                 ← background HTTP fetch of numeric paths for pickers
+    tides.*                      ← NZ tides from /dash/tides.bin (tools/linz_tides_pack.py, LINZ CC BY 4.0),
+                                    projected depth, moon/solunar; panel.tide.*/panel.moon.* values
+    instruments_app.*            ← ESP_UI app: tileview pages, tile editor, path picker, gear menu
+    dash_web.*, dash_editor.html ← esp_http_server :80 web editor + /api/* (no auth — trusted LAN)
+  day_night/                     ← global brightness, sun-based day/night switch, red night filter (all apps),
+                                    auto time zone from position, virtual panel.* values (time/date/sun)
   signalk_app/                   ← DEPRECATED — excluded from build, kept for reference
   wind_rose_app/                 ← Heading-relative compass rose with AWS/TWS + corner panels
     wind_rose_app.hpp            ← ESP_UI_PhoneApp subclass declaration
@@ -159,7 +165,7 @@ app_main()
   └── ESP_UI_Phone::begin()
         ├── Status bar: WiFi icon + 12h clock (battery hidden)
         ├── installApp(new SettingsApp())        ← timezone + unit preferences
-        ├── installApp(new DataBrowserApp())     ← dynamic SignalK path browser
+        ├── installApp(new InstrumentsApp())     ← configurable instrument pages (default startup app)
         ├── installApp(new AutopilotApp())       ← autopilot controller
         ├── installApp(new WindRoseApp())        ← heading compass rose + AWS
         └── installApp(new WifiSettingsApp())    ← on-device WiFi configuration
@@ -381,7 +387,7 @@ SignalK server (discovered via mDNS)
 
 **Observer pattern**: `signalk_client_watch(path, callback, user_data)` registers a callback
 that fires on the LVGL thread (via `lv_async_call`) when the watched path receives new data.
-Used by Data Browser — no polling timer needed.
+Used by Instruments tiles — no polling timer needed.
 
 **Polling pattern**: Autopilot and Wind Rose still use `signalk_client_get_data()` snapshot +
 LVGL timer (500ms). The `static InstrumentStore d` avoids stack overflow (struct is ~6.4KB).
@@ -390,8 +396,8 @@ LVGL timer (500ms). The `static InstrumentStore d` avoids stack overflow (struct
 
 | App | Description |
 |-----|-------------|
-| **Settings** | Timezone + unit preferences (7 categories, generic picker pattern) |
-| **Data Browser** | Dynamic SignalK path browser — HTTP discovery + live value display |
+| **Settings** | Timezone, unit preferences and Startup App (8 categories, generic picker pattern) + Display page |
+| **Instruments** | Configurable multi-page instrument grid + web editor at `http://<ip>/` |
 | **Autopilot** | Autopilot controller — compass, wind bar, engage/disengage |
 | **Wind Rose** | Heading-relative compass rose + AWS/TWS + corner panels |
 | **WiFi Settings** | On-device WiFi configuration (scan, connect, saved networks) |
@@ -424,48 +430,17 @@ No IP address configuration needed — mDNS handles it.
 See `docs/signalk-paths.md` for example SignalK paths and unit conversions.
 See `docs/DEV_SERVER.md` for the full connection workflow and which paths the dev server provides.
 
-## Data Browser App
+## Subscription Design Notes
 
-**Component**: `components/data_browser_app/` — dynamic SignalK path browser.
-
-**Path discovery**: on app open, HTTP GET `/signalk/v1/api/vessels/self` fetches all paths.
-Response parsed with cJSON tree walk. 256KB PSRAM buffer for large responses. Runs in
-a background FreeRTOS task (16KB stack). If server not yet discovered (base URL unavailable),
-polls every 500ms via LVGL timer until `signalk_auth_get_base_url()` returns non-null.
-
-**Path naming**: uses `meta.displayName` from the server response if present, otherwise
-shows the raw SignalK path. No hardcoded lookup table — all names come from the server.
-
-**List view**: scrollable `lv_list` grouped by first path segment (Navigation, Environment,
-Electrical, etc.). Paths sorted alphabetically within each group. Non-numeric paths
-(strings, objects) shown dimmed and non-tappable.
-
-**Detail view**: tap a numeric path → `signalk_client_subscribe()` + `signalk_client_watch()`
-→ live value displayed in large font. Observer-driven (no polling timer) — `lv_async_call`
-delivers updates from the WS task to the LVGL thread.
-
-**Dynamic font sizing** based on character count:
-- 1-2 chars: 360px Montserrat Bold (e.g. "66%")
-- 3 chars: 310px (e.g. "215°")
-- 4+ chars: 210px (e.g. "14.54 V")
-
-**Unit positioning**: degree symbol (°) rendered at 1/3 of value font as superscript.
-Text units (V, ft, kts) at 48px bottom-right. Percent (%) at 48px top-right.
-
-**Value formatting** based on `meta.units` from the server:
-- `m/s` → knots via `unit_convert(UNIT_CAT_SPEED)`
-- `rad` → degrees (× 57.2958)
-- `K` → °C/°F via `unit_convert(UNIT_CAT_TEMPERATURE)`
-- `m` → ft via `unit_convert(UNIT_CAT_DEPTH)`
-- `ratio` → percentage (× 100)
-- Everything else → raw float with unit string
+(The former Data Browser app has been removed; the Instruments app covers its use case.)
 
 **Key design decisions**:
-- No hardcoded path names — server provides `meta.displayName` or raw path is shown
 - No WS unsubscribe message sent — caused server to drop connection. Paths stay in store.
-- `InstrumentStore` is shared with autopilot/wind rose — initial 10 paths pre-populated,
-  dynamic paths added on subscribe, never removed (prevents corrupting shared slots)
+- `InstrumentStore` is shared with autopilot/wind rose — initial 10 paths pre-populated (permanent);
+  dynamic subscriptions are reference-counted and their slots freed when the last user unsubscribes
 - `static InstrumentStore d` in callbacks avoids stack overflow (6.4KB struct)
+- signalk-server only accepts `{"context":"*","unsubscribe":[{"path":"*"}]}` — a per-path unsubscribe
+  closes the stream. `signalk_client_unsubscribe()` therefore sends the wildcard and re-subscribes the rest.
 
 ## Subscribing to New Paths
 
@@ -493,7 +468,6 @@ store snapshot under mutex. Use `store_find()` on the copy.
 | SignalK paths subscribed | `components/signalk_client/signalk_client.cpp` → `s_initial_subs[]` + dynamic `subscribe()` |
 | Dynamic data store | `components/signalk_client/signalk_client.hpp` → `InstrumentStore`, `PathValue`, `store_find/set` |
 | Observer (value watch) | `components/signalk_client/signalk_client.cpp` → `signalk_client_watch()`, `lv_async_call` |
-| Data browser (path list + detail) | `components/data_browser_app/data_browser_app.cpp` → HTTP fetch + observer |
 | Server base URL | `components/signalk_auth/signalk_auth.hpp` → `signalk_auth_get_base_url()` |
 | Device auth / token / API calls | `components/signalk_auth/signalk_auth.hpp` → public API |
 | Autopilot button → API wiring | `components/autopilot_app/autopilot_app.cpp` → `on_btn_event()` |

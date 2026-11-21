@@ -1,0 +1,18 @@
+version: 1.0.0
+devices:
+  - name: audio_dac
+    gen_skip: true
+  - name: audio_adc
+    gen_skip: true
+  - name: fs_spiffs
+    gen_skip: true
+  - name: sdcard_power_ctrl
+    gen_skip: true
+  - name: fs_sdcard
+    gen_skip: true
+  - name: lcd_touch
+    gen_skip: true
+  - name: lcd_brightness
+    gen_skip: true
+  - name: camera
+    gen_skip: true

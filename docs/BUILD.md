@@ -1,8 +1,8 @@
 # Build System Reference
 
 This document covers the component dependency structure, sdkconfig settings,
-and the IDF 5.4-specific issues that had to be resolved before this project
-built successfully. It exists so these problems are not rediscovered from scratch.
+and build issues resolved on this project. It exists so these problems are not
+rediscovered from scratch.
 
 ---
 
@@ -10,10 +10,10 @@ built successfully. It exists so these problems are not rediscovered from scratc
 
 | Item | Value |
 |------|-------|
-| Framework | ESP-IDF v5.4 |
+| Framework | ESP-IDF v5.5.6 |
 | Target | esp32p4 |
 | Toolchain | riscv32-esp-elf-gcc 14.2.0 |
-| Python venv | `~/.espressif/python_env/idf5.4_py3.14_env` |
+| Python venv | Created by the ESP-IDF v5.5.6 installer |
 | Build command | `get_idf && idf.py build` |
 | Binary output | `build/waveshare_p4_signalk.bin` (~2MB) |
 
@@ -32,7 +32,9 @@ Component Manager on first build. They are downloaded to `managed_components/`
 
 ```yaml
 dependencies:
-  idf: ">=5.4"
+  idf: ">=5.5.6"
+  espressif/esp_board_manager: "^0.7.6"
+  waveshare/waveshare_boards: "^0.3.5"
   waveshare/esp32_p4_wifi6_touch_lcd_4b: "^1.0.1"   # BSP: display, touch, LVGL port
   espressif/esp-ui: "0.2.*"                           # phone launcher shell
   espressif/esp_websocket_client: "*"                 # WS client (not bundled in IDF 5.x)
@@ -45,10 +47,18 @@ Resolved versions (from `dependencies.lock`):
 | `espressif/esp_websocket_client` | 1.6.1 | Moved out of IDF core |
 | `espressif/esp-ui` | 0.2.1 | Phone launcher shell |
 | `lvgl/lvgl` | 8.4.0 | Pulled in by BSP |
-| `espressif/esp_lvgl_port` | 2.7.2 | Pulled in by BSP |
+| `espressif/esp_lvgl_port` | 2.9.0 | LVGL display and touch integration |
 | `waveshare/esp32_p4_wifi6_touch_lcd_4b` | 1.0.1 | Board BSP |
-| `waveshare/esp_lcd_st7703` | 1.0.5 | Display driver |
-| `espressif/esp_lcd_touch_gt911` | 1.2.0 | Touch driver |
+| `waveshare/waveshare_boards` | 0.3.5 | Panel-ID probing and board definitions |
+| `waveshare/esp_lcd_st7703` | 2.0.0 | ST7703 controller driver |
+| `espressif/esp_lcd_jd9365` | 2.0.2 | Detected LCD controller driver |
+| `espressif/esp_lcd_touch_gt911` | 1.2.1 | Touch driver |
+| `espressif/esp_lcd_touch` | 1.2.1 | Touch API used by the Waveshare BSP |
+
+The Board Manager selects ST7703 or JD9365DA initialization from the panel ID.
+The app still uses the BSP for GT911 touch, I2C, audio, and backlight. Optional
+Board Manager audio, camera, and filesystem integrations are disabled in
+`sdkconfig.defaults.bmgr` to avoid duplicate BSP support and unused dependencies.
 
 ### Custom component REQUIRES
 
@@ -346,7 +356,7 @@ Installed 2026-03-23 on macOS Darwin 24.6.0 (Apple Silicon).
 ```sh
 # Shallow clone (full clone with --recursive takes 30+ min on slow connections)
 mkdir -p ~/esp && cd ~/esp
-git clone --depth 1 -b v5.4 https://github.com/espressif/esp-idf.git
+git clone --depth 1 -b v5.5.6 https://github.com/espressif/esp-idf.git
 
 # Install toolchain for ESP32-P4 only (fetches ~4 tools, not all targets)
 cd esp-idf && ./install.sh esp32p4
@@ -364,7 +374,7 @@ echo 'alias get_idf=". $HOME/esp/esp-idf/export.sh"' >> ~/.zshrc
 | openocd-esp32 | v0.12.0-esp32-20241016 |
 | esp-rom-elfs | 20241011 |
 
-Python venv: `~/.espressif/python_env/idf5.4_py3.14_env`
+Python venv: created by the ESP-IDF v5.5.6 installer
 
 ### Changing Network Configuration
 

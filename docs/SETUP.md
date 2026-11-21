@@ -3,7 +3,7 @@
 ## Hardware
 
 - **Board**: Waveshare ESP32-P4-WIFI6-Touch-LCD-4B ("Smart 86 Box")
-- **Display**: 4" IPS 720×720 MIPI-DSI, ST7703 driver
+- **Display**: 4" IPS 720×720 MIPI-DSI; ST7703/JD9365DA controller detected at boot
 - **Touch**: GT911 (I2C, SDA=GPIO7, SCL=GPIO8)
 - **WiFi**: ESP32-C6 coprocessor via SDIO (esp-hosted)
 - **Flash**: 16MB · **PSRAM**: 8MB OSPI
@@ -25,23 +25,18 @@ alias get_idf='. $HOME/esp/esp-idf/export.sh'
 
 Reload your shell (`source ~/.zshrc`) before continuing.
 
-### ESP-IDF v5.4
+### ESP-IDF v5.5.6
 
 ```sh
 git clone --recursive https://github.com/espressif/esp-idf.git ~/esp/esp-idf
 cd ~/esp/esp-idf
-git checkout v5.4
+git checkout v5.5.6
 ./install.sh esp32p4      # downloads RISC-V toolchain and Python venv
 ```
 
-The venv will be created at `~/.espressif/python_env/idf5.4_py3.13_env`.
-If you see a venv named `idf5.4_py3.9_env` it was built with the wrong
-Python — delete it and re-run `install.sh` with Homebrew first in PATH:
-
-```sh
-rm -rf ~/.espressif/python_env/idf5.4_py3.9_env
-PATH="/opt/homebrew/bin:$PATH" ~/esp/esp-idf/install.sh esp32p4
-```
+The venv name depends on the Python version selected by `install.sh`.
+If IDF setup selects an unsupported Python interpreter, install Python 3.10+
+and rerun the installer with it first in `PATH`.
 
 ---
 
@@ -77,8 +72,14 @@ The device finds SignalK servers via mDNS (`_signalk-ws._tcp`). No IP address
 configuration needed. The ESP32 and Mac must be on the same **2.4GHz** WiFi
 network (the ESP32-C6 does not support 5GHz).
 
-If mDNS doesn't find a server, the device stays disconnected and retries
-automatically. No fallback URI — mDNS is the only discovery mechanism.
+If mDNS doesn't find a server (common when the server is a Pi running its own
+WiFi hotspot), the device probes these fallbacks in order and uses the first
+with an open TCP port: the last server that worked, the WiFi gateway on port
+3000, then `CONFIG_SIGNALK_WS_URI` (menuconfig). If none respond, it stays
+disconnected and retries automatically.
+
+If the WiFi join fails (e.g. association rejected), the WiFi manager retries
+every 5 s until it connects; a wrong password stops the retries.
 
 **Note:** The ESP32-C6 WiFi coprocessor ships pre-flashed by Waveshare — no
 additional firmware step required.
@@ -88,10 +89,14 @@ additional firmware step required.
 ## Build
 
 Dependencies are declared in `main/idf_component.yml` and downloaded
-automatically by the component manager on first build.
+automatically by the component manager. Install the Board Manager CLI and
+generate this board's device configuration before the first build:
 
 ```sh
 get_idf
+python -m pip install --upgrade esp-bmgr-assist
+idf.py reconfigure
+idf.py bmgr -b esp32_p4_wifi6_touch_lcd_4b
 idf.py build
 ```
 
@@ -100,10 +105,10 @@ Expected output ends with:
 Project build complete.
 ```
 
-Binary output: `build/waveshare_p4_signalk.bin` (~2MB)
+Binary output: `build/waveshare_p4_signalk.bin`
 
 See `docs/BUILD.md` for a detailed account of the component dependencies and
-the IDF 5.4-specific build issues that were resolved on this project.
+the build issues previously resolved on this project.
 
 ---
 
@@ -152,6 +157,10 @@ Scrolling compass strip, wind bar, and mode/button controls for autopilot
 engagement and adjustment. See `docs/AUTOPILOT_UI.md` for design details.
 
 ### Wind Rose
+
+The wind rose is now a tile in the Instruments app (`panel.wind.rose`, see `docs/INSTRUMENTS.md`) and is no
+longer installed as a separate launcher app. The original app below is kept in `components/wind_rose_app/`
+for the simulator only.
 
 Heading-relative compass rose with rotating tick ring and cardinal/degree labels.
 The compass rotates so the current magnetic heading is always at 12 o'clock.

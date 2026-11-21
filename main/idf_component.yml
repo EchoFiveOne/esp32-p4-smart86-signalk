@@ -1,5 +1,5 @@
 dependencies:
-  idf: ">=5.4"
+  idf: ">=5.5.6"
 
   # WiFi remote — ESP32-P4 has no built-in WiFi; this component routes esp_wifi_*
   # calls to the ESP32-C6 coprocessor over SDIO.
@@ -18,8 +18,14 @@ dependencies:
       - if: "target in [esp32p4]"
 
   # Waveshare ESP32-P4-WIFI6-Touch-LCD-4B BSP
-  # Pulls in: ST7703 display driver, GT911 touch, LVGL port, ESP-IDF >=5.4
+  # Retained for board I2C, touch, backlight, and audio support.
   waveshare/esp32_p4_wifi6_touch_lcd_4b: "^1.0.1"
+
+  # Board Manager probes the LCD ID and selects the matching panel driver.
+  espressif/esp_board_manager: "^0.7.6"
+  waveshare/waveshare_boards: "^0.3.5"
+  # Directly expose the BSP's GT911 touch API to the application.
+  espressif/esp_lcd_touch: "^1.2.1"
 
   # ESP-UI (esp-brookesia) v0.2.x - phone launcher shell
   # LVGL 8.x based

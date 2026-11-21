@@ -92,9 +92,9 @@ dns-sd -B _signalk-ws._tcp
 
 ### If mDNS doesn't find the server
 
-There is no fallback URI. The device relies entirely on mDNS. If the server
-isn't found, the device stays disconnected and retries automatically via the
-status timer (every 500ms). Check:
+The device falls back to TCP-probing the last working server, the WiFi
+gateway on port 3000, and `CONFIG_SIGNALK_WS_URI`. If none respond, it stays
+disconnected and retries automatically via the status timer. Check:
 - Both devices on the same 2.4GHz network
 - `dns-sd -B _signalk-ws._tcp` shows the server on the Mac
 - SignalK server is running with default mDNS advertisement

@@ -81,3 +81,12 @@ CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY=y
 
 # Stack sizes for websocket task
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
+# Web editor: browsers open several parallel connections
+CONFIG_LWIP_MAX_SOCKETS=20
+
+# Display performance: optimised build, ~60 Hz refresh and touch sampling
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+CONFIG_LV_DISP_DEF_REFR_PERIOD=15
+CONFIG_LV_INDEV_DEF_READ_PERIOD=15
+CONFIG_LV_MEMCPY_MEMSET_STD=y

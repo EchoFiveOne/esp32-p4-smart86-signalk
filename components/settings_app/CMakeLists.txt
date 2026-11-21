@@ -4,6 +4,7 @@ idf_component_register(
     REQUIRES
         espressif__esp-ui
         unit_config
+        day_night
         log
         esp_timer
 )

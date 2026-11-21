@@ -1,0 +1,6 @@
+version: "1.0"
+description: "Use Board Manager only for SignalK's auto-detected LCD"
+
+apply:
+  - unused_devices.yaml
+  - sdkconfig.defaults.board

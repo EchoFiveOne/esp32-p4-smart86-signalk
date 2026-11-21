@@ -1,6 +1,7 @@
 #include "unit_config.hpp"
 #include "esp_log.h"
 #include <string.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 
@@ -60,7 +61,12 @@ static const UnitOption s_tz_options[] = {
     { "Caribbean (AST)",      "", "", 0, 0, "AST4" },
     { "Argentina (ART)",      "", "", 0, 0, "ART3" },
     { "South Africa (SAST)",  "", "", 0, 0, "SAST-2" },
+    // Must stay last so existing stored indices are unchanged; resolved at run time
+    { "Auto (GPS position)",  "", "", 0, 0, "" },
 };
+static const int TZ_AUTO_IDX = sizeof(s_tz_options) / sizeof(s_tz_options[0]) - 1;
+#define AUTO_TZ_FALLBACK "NZST-12NZDT,M9.5.0,M4.1.0/3"  // Auto before any position is known
+static char s_auto_tz[64] = AUTO_TZ_FALLBACK;
 
 // ---------------------------------------------------------------------------
 // Speed options (from m/s)
@@ -122,17 +128,30 @@ static const UnitOption s_volume_options[] = {
 };
 
 // ---------------------------------------------------------------------------
+// Startup app options (order must match unit_startup_app_t)
+// ---------------------------------------------------------------------------
+
+static const UnitOption s_startup_options[] = {
+    { "Home screen", "", "", 0, 0, NULL },
+    { "Instruments", "", "", 0, 0, NULL },
+    { "Autopilot",   "", "", 0, 0, NULL },
+    { "WiFi",        "", "", 0, 0, NULL },
+    { "Settings",    "", "", 0, 0, NULL },
+};
+
+// ---------------------------------------------------------------------------
 // Category table
 // ---------------------------------------------------------------------------
 
 static const CategoryDef s_categories[UNIT_CAT_COUNT] = {
-    [UNIT_CAT_TIMEZONE]    = { "Timezone",    "tz",  s_tz_options,       sizeof(s_tz_options)/sizeof(s_tz_options[0]),       0 },
+    [UNIT_CAT_TIMEZONE]    = { "Timezone",    "tz",  s_tz_options,       sizeof(s_tz_options)/sizeof(s_tz_options[0]),       TZ_AUTO_IDX },
     [UNIT_CAT_SPEED]       = { "Speed",       "spd", s_speed_options,    sizeof(s_speed_options)/sizeof(s_speed_options[0]), 0 },
     [UNIT_CAT_DEPTH]       = { "Depth",       "dep", s_depth_options,    sizeof(s_depth_options)/sizeof(s_depth_options[0]), 0 },
     [UNIT_CAT_TEMPERATURE] = { "Temperature", "tmp", s_temp_options,     sizeof(s_temp_options)/sizeof(s_temp_options[0]),   0 },
     [UNIT_CAT_DISTANCE]    = { "Distance",    "dst", s_dist_options,     sizeof(s_dist_options)/sizeof(s_dist_options[0]),   0 },
     [UNIT_CAT_PRESSURE]    = { "Pressure",    "prs", s_pressure_options, sizeof(s_pressure_options)/sizeof(s_pressure_options[0]), 0 },
     [UNIT_CAT_VOLUME]      = { "Volume",      "vol", s_volume_options,   sizeof(s_volume_options)/sizeof(s_volume_options[0]),     0 },
+    [UNIT_CAT_STARTUP]     = { "Startup App", "boot", s_startup_options, sizeof(s_startup_options)/sizeof(s_startup_options[0]), STARTUP_INSTRUMENTS },
 };
 
 // ---------------------------------------------------------------------------
@@ -180,7 +199,7 @@ static void save_to_nvs(unit_category_t cat)
 
 static void apply_timezone(int idx)
 {
-    const char *posix = s_tz_options[idx].extra;
+    const char *posix = idx == TZ_AUTO_IDX ? s_auto_tz : s_tz_options[idx].extra;
     if (posix && posix[0]) {
         setenv("TZ", posix, 1);
         tzset();
@@ -201,6 +220,12 @@ void unit_config_init(void)
 
 #ifndef SIMULATOR_BUILD
     load_from_nvs();
+    nvs_handle_t nvs;
+    if (nvs_open(NVS_NS, NVS_READONLY, &nvs) == ESP_OK) {
+        size_t len = sizeof(s_auto_tz);
+        if (nvs_get_str(nvs, "tz_auto", s_auto_tz, &len) != ESP_OK) strcpy(s_auto_tz, AUTO_TZ_FALLBACK);
+        nvs_close(nvs);
+    }
 #endif
 
     /* Apply timezone on boot */
@@ -285,5 +310,26 @@ const char *unit_category_name(unit_category_t cat)
 
 const char *unit_config_get_tz_posix(void)
 {
+    if (s_pref[UNIT_CAT_TIMEZONE] == TZ_AUTO_IDX) return s_auto_tz;
     return s_tz_options[s_pref[UNIT_CAT_TIMEZONE]].extra;
+}
+
+bool unit_config_tz_is_auto(void)
+{
+    return s_pref[UNIT_CAT_TIMEZONE] == TZ_AUTO_IDX;
+}
+
+void unit_config_set_auto_tz(const char *posix)
+{
+    if (!posix || !posix[0] || strcmp(posix, s_auto_tz) == 0) return;
+    snprintf(s_auto_tz, sizeof(s_auto_tz), "%s", posix);
+#ifndef SIMULATOR_BUILD
+    nvs_handle_t nvs;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &nvs) == ESP_OK) {
+        nvs_set_str(nvs, "tz_auto", s_auto_tz);
+        nvs_commit(nvs);
+        nvs_close(nvs);
+    }
+#endif
+    if (unit_config_tz_is_auto()) apply_timezone(TZ_AUTO_IDX);
 }

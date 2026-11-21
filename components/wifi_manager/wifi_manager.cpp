@@ -9,6 +9,7 @@
 #include "nvs.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/timers.h"
+#include "freertos/task.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -25,6 +26,7 @@ static char s_connecting_pw[65] = {};
 static char s_error[64] = {};
 static wifi_mgr_on_ip_cb_t s_on_ip_cb = nullptr;
 static volatile bool s_intentional_disconnect = false;  /* suppress event during connect() */
+static volatile bool s_auto_retry = false;              /* keep retrying the last network after failures */
 
 static WifiScanResult s_scan_results[WIFI_MGR_MAX_SCAN];
 static int s_scan_count = 0;
@@ -58,7 +60,10 @@ static void set_error_from_reason(uint8_t reason)
     case 200: /* WIFI_REASON_BEACON_TIMEOUT */
         snprintf(s_error, sizeof(s_error), "AP not responding");
         break;
-    case 202: /* WIFI_REASON_ASSOC_FAIL */
+    case 202: /* WIFI_REASON_AUTH_FAIL */
+        snprintf(s_error, sizeof(s_error), "Authentication failed");
+        break;
+    case 203: /* WIFI_REASON_ASSOC_FAIL */
         snprintf(s_error, sizeof(s_error), "Association failed");
         break;
     default:
@@ -222,8 +227,10 @@ static void wifi_event_handler(void *arg, esp_event_base_t base,
                 if (s_timeout_timer) xTimerStop(s_timeout_timer, 0);
                 set_error_from_reason(disc->reason);
                 s_state = WIFI_MGR_CONNECT_FAILED;
+                /* A wrong password won't fix itself; anything else is retried */
+                if (disc->reason == 15 || disc->reason == 204) s_auto_retry = false;
                 ESP_LOGW(TAG, "Connection to \"%s\" failed: %s", s_connecting_ssid, s_error);
-            } else {
+            } else if (s_state == WIFI_MGR_CONNECTED) {
                 s_state = WIFI_MGR_DISCONNECTED;
                 s_error[0] = '\0';
                 esp_wifi_connect();
@@ -235,6 +242,9 @@ static void wifi_event_handler(void *arg, esp_event_base_t base,
             ESP_LOGI(TAG, "WiFi associated with AP");
             break;
         case WIFI_EVENT_SCAN_DONE: {
+            /* ESP-Hosted also posts SCAN_DONE for the blocking boot scan, after
+             * its records were already harvested; re-reading would wipe them. */
+            if (!s_scanning) break;
             uint16_t ap_count = 0;
             esp_wifi_scan_get_ap_num(&ap_count);
             if (ap_count > WIFI_MGR_MAX_SCAN) ap_count = WIFI_MGR_MAX_SCAN;
@@ -277,6 +287,29 @@ static void wifi_event_handler(void *arg, esp_event_base_t base,
 // Public API
 // ---------------------------------------------------------------------------
 
+/* Retries the last network every 5 s after a failed or timed-out attempt (runs in
+ * its own task: the ESP-Hosted RPC calls need more stack than the timer task has). */
+static void retry_task(void *)
+{
+    int waited = 0;
+    for (;;) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        if (s_state != WIFI_MGR_CONNECT_FAILED || !s_auto_retry || !s_connecting_ssid[0]) {
+            waited = 0;
+            continue;
+        }
+        if (++waited < 5) continue;
+        waited = 0;
+        ESP_LOGI(TAG, "Retrying \"%s\" (%s)...", s_connecting_ssid, s_error);
+        s_state = WIFI_MGR_CONNECTING;
+        if (esp_wifi_connect() != ESP_OK) {
+            s_state = WIFI_MGR_CONNECT_FAILED;
+            continue;
+        }
+        if (s_timeout_timer) xTimerReset(s_timeout_timer, 0);
+    }
+}
+
 void wifi_manager_init(wifi_mgr_on_ip_cb_t on_ip_cb)
 {
     s_on_ip_cb = on_ip_cb;
@@ -301,6 +334,7 @@ void wifi_manager_init(wifi_mgr_on_ip_cb_t on_ip_cb)
     /* Create one-shot timeout timer */
     s_timeout_timer = xTimerCreate("wifi_to", pdMS_TO_TICKS(WIFI_MGR_CONNECT_TIMEOUT_MS),
                                     pdFALSE, NULL, connect_timeout_cb);
+    xTaskCreate(retry_task, "wifi_retry", 4096, NULL, 3, NULL);
 
     /* Blocking scan at boot — results needed before connect_saved() */
     ESP_LOGI(TAG, "Running boot scan...");
@@ -385,11 +419,14 @@ bool wifi_manager_connect(const char *ssid, const char *password)
     strncpy(s_connecting_pw, password, sizeof(s_connecting_pw) - 1);
     s_connecting_pw[sizeof(s_connecting_pw) - 1] = '\0';
 
-    /* Flag so disconnect event from tearing down old connection is ignored */
-    s_intentional_disconnect = true;
+    /* Flag so the disconnect event from tearing down an existing connection is
+     * ignored (with no connection there is no event, and the flag would swallow
+     * the real failure of this attempt) */
+    s_intentional_disconnect = s_state == WIFI_MGR_CONNECTED;
     esp_wifi_disconnect();
 
     s_state = WIFI_MGR_CONNECTING;
+    s_auto_retry = true;
 
     wifi_config_t wifi_cfg = {};
     strncpy((char *)wifi_cfg.sta.ssid, ssid, sizeof(wifi_cfg.sta.ssid) - 1);
@@ -410,6 +447,7 @@ bool wifi_manager_connect(const char *ssid, const char *password)
 
 void wifi_manager_disconnect(void)
 {
+    s_auto_retry = false;
     if (s_timeout_timer) xTimerStop(s_timeout_timer, 0);
     esp_wifi_disconnect();
     s_state = WIFI_MGR_DISCONNECTED;

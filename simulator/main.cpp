@@ -22,7 +22,6 @@
 #include "wind_rose_app.hpp"
 #include "wifi_settings_app.hpp"
 #include "settings_app.hpp"
-#include "data_browser_app.hpp"
 #include "signalk_client.hpp"
 #include "sk_logo_alpha.h"
 #include "helm_icon_alpha.h"
@@ -72,93 +71,6 @@ class SimulatorSettingsApp : public SettingsApp {
 public:
     bool start() { return run(); }
     void openPicker(unit_category_t cat) { show_picker(cat); }
-};
-
-class SimulatorDataBrowserApp : public DataBrowserApp {
-public:
-    bool start() { return run(); }
-    void openDetail(int idx) {
-        show_detail_view(idx);
-        // Manually set a sample value for screenshot (observer won't fire in sim)
-        if (_detail_value && _detail_unit && idx < _path_count) {
-            const char *units = _paths[idx].units;
-            // Pick representative values based on unit type
-            if (strcmp(units, "m/s") == 0) {
-                lv_label_set_text(_detail_value, "6.2");
-            } else if (strcmp(units, "rad") == 0) {
-                lv_label_set_text(_detail_value, "215");
-            } else if (strcmp(units, "K") == 0) {
-                lv_label_set_text(_detail_value, "18.8");
-            } else if (strcmp(units, "m") == 0) {
-                lv_label_set_text(_detail_value, "49.9");
-            } else if (strcmp(units, "V") == 0) {
-                lv_label_set_text(_detail_value, "14.54");
-            } else if (strcmp(units, "ratio") == 0) {
-                lv_label_set_text(_detail_value, "66");
-            } else {
-                lv_label_set_text(_detail_value, "42.7");
-            }
-            lv_obj_set_style_text_color(_detail_value, lv_color_white(), 0);
-
-            // Dynamic font size based on character count
-            LV_FONT_DECLARE(lv_font_montserrat_120);
-            LV_FONT_DECLARE(lv_font_montserrat_310);
-            LV_FONT_DECLARE(lv_font_montserrat_360);
-            const char *val_text = lv_label_get_text(_detail_value);
-            int val_len = (int)strlen(val_text);
-            const lv_font_t *vf;
-            if (val_len <= 2)      vf = &lv_font_montserrat_360;
-            else if (val_len <= 3) vf = &lv_font_montserrat_310;
-            else                   vf = &lv_font_montserrat_120;
-            lv_obj_set_style_text_font(_detail_value, vf, 0);
-
-            lv_obj_align(_detail_value, LV_ALIGN_CENTER, 0, 0);
-            lv_obj_update_layout(_detail_value);
-
-            // Position unit using the same logic as on_value_changed
-            char unit_buf[16] = {};
-            if (strcmp(units, "m/s") == 0) snprintf(unit_buf, sizeof(unit_buf), "kts");
-            else if (strcmp(units, "rad") == 0) snprintf(unit_buf, sizeof(unit_buf), "°");
-            else if (strcmp(units, "K") == 0) snprintf(unit_buf, sizeof(unit_buf), "°C");
-            else if (strcmp(units, "m") == 0) snprintf(unit_buf, sizeof(unit_buf), "ft");
-            else if (strcmp(units, "V") == 0) snprintf(unit_buf, sizeof(unit_buf), "V");
-            else if (strcmp(units, "ratio") == 0) snprintf(unit_buf, sizeof(unit_buf), "%%");
-            else if (units[0]) snprintf(unit_buf, sizeof(unit_buf), "%s", units);
-
-            lv_label_set_text(_detail_unit, unit_buf);
-            lv_obj_align(_detail_value, LV_ALIGN_CENTER, 0, 0);
-            lv_obj_update_layout(_detail_value);
-
-            if (unit_buf[0]) {
-                LV_FONT_DECLARE(lv_font_montserrat_90);
-                LV_FONT_DECLARE(lv_font_montserrat_120);
-                bool is_degree = (strcmp(unit_buf, "°") == 0);
-                const lv_font_t *uf = &lv_font_montserrat_48;
-                if (is_degree) {
-                    if (vf == &lv_font_montserrat_360)      uf = &lv_font_montserrat_120;
-                    else if (vf == &lv_font_montserrat_310)  uf = &lv_font_montserrat_90;
-                    else                                     uf = &lv_font_montserrat_48;
-                }
-                lv_obj_set_style_text_font(_detail_unit, uf, 0);
-                lv_obj_update_layout(_detail_value);
-                lv_obj_update_layout(_detail_unit);
-                lv_coord_t vx = lv_obj_get_x(_detail_value);
-                lv_coord_t vy = lv_obj_get_y(_detail_value);
-                lv_coord_t vw = lv_obj_get_width(_detail_value);
-                lv_coord_t vh = lv_obj_get_height(_detail_value);
-                bool is_superscript = is_degree ||
-                                      strcmp(unit_buf, "%") == 0 ||
-                                      strcmp(unit_buf, "°C") == 0;
-                if (is_degree) {
-                    lv_obj_set_pos(_detail_unit, vx + vw - 10, vy - 30);
-                } else if (is_superscript) {
-                    lv_obj_set_pos(_detail_unit, vx + vw + 2, vy);
-                } else {
-                    lv_obj_set_pos(_detail_unit, vx + vw + 4, vy + vh - 52);
-                }
-            }
-        }
-    }
 };
 
 class SimulatorWifiApp : public WifiSettingsApp {
@@ -608,22 +520,8 @@ int main(int argc, char *argv[])
     bool render_kb             = (argc > 1 && strcmp(argv[1], "keyboard") == 0);
     bool render_wifi           = (argc > 1 && strcmp(argv[1], "wifi") == 0);
     bool render_settings       = (argc > 1 && strcmp(argv[1], "settings") == 0);
-    bool render_browser        = (argc > 1 && strcmp(argv[1], "browser") == 0);
 
-    if (render_browser) {
-        SimulatorDataBrowserApp browser;
-        browser.start();
-        for (int t = 0; t < 20; t++) { lv_tick_inc(10); lv_timer_handler(); }
-
-        // Sub-mode: "browser detail" renders a detail page
-        if (argc > 2 && strcmp(argv[2], "detail") == 0) {
-            int idx = (argc > 3) ? atoi(argv[3]) : 0;
-            browser.openDetail(idx);
-            for (int t = 0; t < 10; t++) { lv_tick_inc(10); lv_timer_handler(); }
-            return save_png("browser_detail") ? 0 : 1;
-        }
-        return save_png("browser") ? 0 : 1;
-    } else if (render_settings) {
+    if (render_settings) {
         SimulatorSettingsApp settings;
         settings.start();
         for (int t = 0; t < 10; t++) { lv_tick_inc(10); lv_timer_handler(); }

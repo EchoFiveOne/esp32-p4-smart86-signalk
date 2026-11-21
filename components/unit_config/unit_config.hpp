@@ -11,8 +11,18 @@ typedef enum {
     UNIT_CAT_DISTANCE,
     UNIT_CAT_PRESSURE,
     UNIT_CAT_VOLUME,
+    UNIT_CAT_STARTUP,      /* app opened at power-on (not a unit; see unit_startup_app_t) */
     UNIT_CAT_COUNT
 } unit_category_t;
+
+/* Option indices for UNIT_CAT_STARTUP */
+typedef enum {
+    STARTUP_HOME = 0,
+    STARTUP_INSTRUMENTS,
+    STARTUP_AUTOPILOT,
+    STARTUP_WIFI,
+    STARTUP_SETTINGS,
+} unit_startup_app_t;
 
 #ifdef __cplusplus
 extern "C" {
@@ -46,6 +56,11 @@ const char *unit_category_name(unit_category_t cat);
 
 /* Timezone-specific: get POSIX TZ string for current selection */
 const char *unit_config_get_tz_posix(void);
+
+/* "Auto (GPS position)" timezone: true when selected. set_auto_tz() stores the
+ * POSIX string resolved from the boat position (persisted, applied if Auto). */
+bool unit_config_tz_is_auto(void);
+void unit_config_set_auto_tz(const char *posix);
 
 #ifdef __cplusplus
 }

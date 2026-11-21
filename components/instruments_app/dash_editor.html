@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Instruments Editor</title>
+<style>
+:root { --bg:#0b0f13; --panel:#151c23; --tile:#11171d; --line:#26313b; --text:#e6edf3; --dim:#8fa0b0; --accent:#3aa0ff; --red:#ff4d4d; --green:#33cc66; }
+* { box-sizing:border-box; }
+body { margin:0; font:15px system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--text); }
+header { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:10px 14px; background:var(--panel); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5; }
+header h1 { font-size:18px; margin:0 12px 0 0; }
+.dot { width:10px; height:10px; border-radius:50%; display:inline-block; background:var(--red); margin-right:6px; }
+.dot.on { background:var(--green); }
+button, select, input { font:inherit; color:var(--text); background:#1f2932; border:1px solid var(--line); border-radius:6px; padding:7px 10px; }
+button { cursor:pointer; }
+button.primary { background:#1f6fd0; border-color:#1f6fd0; }
+button.danger { background:#7a1d1d; border-color:#7a1d1d; }
+button:disabled { opacity:.45; cursor:default; }
+input[type=number] { width:100px; }
+input[type=checkbox] { width:18px; height:18px; vertical-align:middle; }
+main { display:grid; grid-template-columns:minmax(300px,560px) minmax(300px,1fr); gap:16px; padding:16px; }
+@media (max-width:900px) { main { grid-template-columns:1fr; } }
+.panel { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px; }
+.panel h2 { font-size:15px; margin:0 0 10px; color:var(--accent); font-weight:600; }
+.tabs { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+.tabs button.sel { background:var(--accent); border-color:var(--accent); color:#000; }
+.row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:8px 0; }
+.row label { min-width:120px; color:var(--dim); }
+.grid { display:grid; grid-template-columns:repeat(12,1fr); grid-template-rows:repeat(12,1fr); gap:5px; aspect-ratio:1/1; background:#000; padding:5px; border-radius:10px; }
+.tile { background:var(--tile); border-radius:7px; padding:6px 8px; position:relative; cursor:pointer; overflow:hidden; border:2px solid transparent; display:flex; flex-direction:column; }
+.tile.sel { border-color:var(--accent); }
+.tile .lab { font-size:19px; font-weight:700; color:#c8d4e0; display:flex; justify-content:space-between; gap:6px; white-space:nowrap; overflow:hidden; }
+.tile .val { flex:1; display:flex; align-items:center; justify-content:center; font-weight:700; font-variant-numeric:tabular-nums; line-height:1; }
+.tile.empty .val { font-size:13px; color:#4a5560; font-weight:400; }
+.tile.stale .val { color:#4a5560; }
+.tile.port .val { color:var(--red); } .tile.stbd .val { color:var(--green); }
+.tile.alarm { background:#6a0d0d; }
+.hint { color:var(--dim); font-size:13px; }
+#shot { max-width:100%; border-radius:10px; border:1px solid var(--line); margin-top:8px; }
+#msg { margin-left:auto; color:var(--dim); }
+.small { font-size:12px; color:var(--dim); }
+.combo { position:relative; display:flex; flex:1; min-width:240px; }
+.combo input { flex:1; min-width:0; border-radius:6px 0 0 6px; }
+.combo > button { border-left:0; border-radius:0 6px 6px 0; padding:7px 10px; }
+.combo-menu { position:absolute; top:100%; left:0; right:0; z-index:20; margin-top:2px; max-height:340px; overflow-y:auto; background:#1a232b; border:1px solid var(--line); border-radius:6px; box-shadow:0 8px 24px rgba(0,0,0,.5); }
+.combo-menu .grp { position:sticky; top:0; z-index:1; background:#10171d; color:var(--accent); font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; padding:5px 10px; }
+.combo-menu .opt { display:flex; gap:10px; align-items:baseline; padding:7px 10px; cursor:pointer; }
+.combo-menu .opt .p { flex:1; word-break:break-all; }
+.combo-menu .opt .n { color:var(--dim); font-size:12px; margin-left:6px; }
+.combo-menu .opt .u { color:var(--dim); font-size:12px; white-space:nowrap; }
+.combo-menu .opt.act { background:#264b73; }
+.combo-menu .opt.cur .p::after { content:" \2713"; color:var(--green); }
+.combo-menu .opt.typed { border-top:1px solid var(--line); color:var(--dim); font-style:italic; }
+.combo-menu mark { background:none; color:#ffd166; font-weight:700; }
+.combo-menu .note { padding:8px 10px; color:var(--dim); font-size:13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Instruments</h1>
+  <span><span id="conn" class="dot"></span><span id="connTxt">Signal K</span></span>
+  <button id="save" class="primary" disabled>Save to display</button>
+  <button id="revert">Reload</button>
+  <button id="export">Export</button>
+  <button id="importBtn">Import</button>
+  <input id="importFile" type="file" accept=".json,application/json" hidden>
+  <button id="reset" class="danger">Reset defaults</button>
+  <span id="msg"></span>
+</header>
+<main>
+  <div>
+    <div class="panel">
+      <div class="tabs" id="tabs"></div>
+      <div class="row">
+        <label>Page name</label><input id="pgName" maxlength="19">
+        <label style="min-width:auto">Layout</label><select id="pgLayout"></select>
+        <label style="min-width:auto">Group</label><select id="pgGroup"><option value="">None</option><option value="anchor">Anchor</option><option value="sail">Sail</option></select>
+      </div>
+      <div class="row">
+        <button id="pgAdd">+ Add page</button>
+        <button id="pgDup">Duplicate</button>
+        <button id="pgLeft">&larr; Move</button>
+        <button id="pgRight">Move &rarr;</button>
+        <button id="pgDel" class="danger">Delete page</button>
+      </div>
+      <div class="grid" id="grid"></div>
+      <p class="hint">Click a tile to edit it. On the display: swipe between pages, long-press a tile to edit, tap a tile to acknowledge an alarm or show min/max.</p>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <h2>Display screenshot</h2>
+      <button id="shotBtn">Refresh screenshot</button>
+      <label class="small"><input type="checkbox" id="shotAuto"> auto (5 s)</label>
+      <div><img id="shot" alt=""></div>
+    </div>
+  </div>
+  <div>
+    <div class="panel" id="tilePanel">
+      <h2 id="tileTitle">Tile</h2>
+      <div class="row"><label>Signal K path</label>
+        <div class="combo">
+          <input id="tPath" autocomplete="off" spellcheck="false" placeholder="Type to search, or pick from the list"
+                 role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="pathMenu">
+          <button id="pathToggle" type="button" title="Show all paths" aria-label="Show all paths">&#9662;</button>
+          <div class="combo-menu" id="pathMenu" role="listbox" hidden></div>
+        </div>
+        <button id="refreshPaths" title="Reload available paths">&#8635;</button>
+      </div>
+      <div class="small" id="tPathInfo"></div>
+      <div class="row"><label>Label</label><input id="tLabel" maxlength="23"></div>
+      <div class="row"><label>Units</label><select id="tUnit"></select><span class="small" id="tSk"></span></div>
+      <div class="row"><label>Decimals</label>
+        <select id="tDec"><option value="-1">Auto</option><option>0</option><option>1</option><option>2</option><option>3</option></select></div>
+      <div class="row" id="angleRow"><label>Angle style</label>
+        <select id="tAngle"><option value="auto">Auto</option><option value="360">0 - 360</option><option value="180">+/- 180</option><option value="ps">Port / Starboard</option></select></div>
+      <div class="row"><label>Smoothing</label>
+        <select id="tSmooth"><option value="0">Off</option><option value="1">Low</option><option value="2">Medium</option><option value="3">High</option></select></div>
+      <div class="row"><label>Trend graph</label>
+        <select id="tTrend"><option value="0">Off</option><option value="1">1 min</option><option value="2">5 min</option><option value="3">15 min</option><option value="4">60 min</option></select></div>
+      <div class="row"><label>Low alarm</label><input type="checkbox" id="tLoEn"><input type="number" step="any" id="tLo"></div>
+      <div class="row"><label>High alarm</label><input type="checkbox" id="tHiEn"><input type="number" step="any" id="tHi"></div>
+      <div class="row"><label>Alarm beep</label><input type="checkbox" id="tBeep"></div>
+      <p class="hint">Alarm limits use the displayed units (e.g. knots, metres, &deg;C).</p>
+      <div class="row"><button id="tClear" class="danger">Clear tile</button></div>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <h2>Dashboard settings</h2>
+      <div class="row"><label>Theme</label><select id="sTheme"><option value="dark">Dark</option><option value="day">Day</option><option value="night">Night (red)</option><option value="auto">Auto (Day / Dark at night)</option></select></div>
+      <div class="row"><label>Auto page cycle</label><select id="sCycle"><option value="0">Off</option><option>5</option><option>10</option><option>15</option><option>30</option><option>60</option></select><span class="small">seconds, pauses 30 s after a touch</span></div>
+      <div class="row"><label>No-data timeout</label><select id="sStale"><option>3</option><option>5</option><option>10</option><option>20</option><option>30</option><option>60</option></select><span class="small">seconds before showing ---</span></div>
+      <div class="row"><label>Start page</label><select id="sStart"></select></div>
+      <div class="row"><label>Lock editing</label><input type="checkbox" id="sLock"><span class="small">disables long-press editing on the display</span></div>
+      <h2 style="margin-top:12px">Auto anchor / sail pages</h2>
+      <div class="row"><label>Enabled</label><input type="checkbox" id="sAuto"><span class="small">jumps to the first page of the Anchor or Sail group (set per page above); all pages stay reachable by swiping</span></div>
+      <div class="row"><label>Speed threshold</label><input type="number" id="sAutoKn" min="0.2" max="20" step="0.1" style="width:80px"><span class="small">knots, speed over ground</span></div>
+      <div class="row"><label>Anchor after</label><input type="number" id="sAnchorMin" min="0.1" max="60" step="0.5" style="width:80px"><span class="small">minutes below the threshold</span></div>
+      <div class="row"><label>Sail after</label><input type="number" id="sSailS" min="5" max="3600" step="5" style="width:80px"><span class="small">seconds above the threshold</span></div>
+      <div class="row"><label>Cycle in group</label><input type="checkbox" id="sCycleGroup"><span class="small">auto page cycle only rotates through the active group</span></div>
+      <p class="small" id="motionStatus"></p>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <h2>Panel display (all apps)</h2>
+      <p class="hint">Applied immediately, independent of the dashboard Save button. Also in Settings &gt; Display on the panel.</p>
+      <div class="row"><label>Day / night</label><select id="dMode"><option value="auto">Auto (sunrise / sunset)</option><option value="day">Always day</option><option value="night">Always night</option></select></div>
+      <div class="row"><label>Day brightness</label><input type="range" id="dDay" min="5" max="100"><span id="dDayV"></span></div>
+      <div class="row"><label>Night brightness</label><input type="range" id="dNight" min="1" max="100"><span id="dNightV"></span></div>
+      <div class="row"><label>Red night filter</label><input type="checkbox" id="dRed"><span class="small">renders every app in red at night</span></div>
+      <div class="row"><label>Night starts at</label><select id="dSwitch"><option value="0">Sunset (sun 0&deg;)</option><option value="-6">Civil dusk (-6&deg;)</option><option value="-12">Nautical dusk (-12&deg;)</option></select></div>
+      <div class="row"><label>Time zone</label><select id="dTz"></select><span class="small">Auto picks the zone and daylight saving from the boat's position</span></div>
+      <p class="small" id="dStatus"></p>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <h2>Tides (NZ, LINZ)</h2>
+      <p class="hint">Used by the panel.tide.* tiles (curve, next high / low water, projected depth) and the solunar tile. Applied immediately.</p>
+      <div class="row"><label>Tide port</label><select id="tdPort"><option value="">Auto (nearest within 50 NM)</option></select></div>
+      <div class="row"><label>Transducer offset</label><input type="number" step="0.01" id="tdOffs" placeholder="unset"><span class="small">m from the water surface down to the transducer; blank = use Signal K surfaceToTransducer</span></div>
+      <div class="row"><label>Barometric correction</label><input type="checkbox" id="tdBaro"><span class="small">-1 cm per hPa above 1013 hPa (needs environment.outside.pressure)</span></div>
+      <div class="row"><label>Tide table</label><input type="file" id="tdFile" accept=".bin"><button id="tdUpload">Upload</button></div>
+      <p class="small" id="tdStatus"></p>
+      <p class="small">Tide data: Land Information New Zealand (LINZ), CC BY 4.0. Astronomical predictions only; weather can change levels.</p>
+    </div>  </div>
+</main>
+<script>
+// Cells [x, y, w, h] on a 12 x 12 grid (same as the firmware)
+const row = (y, w, h, n, x0 = 0) => Array.from({length: n}, (_, i) => [x0 + i * w, y, w, h]);
+const LAYOUTS = [
+  ["1","Single",[[0,0,12,12]]],
+  ["2r","2 rows",[[0,0,12,6],[0,6,12,6]]],
+  ["2c","2 columns",[[0,0,6,12],[6,0,6,12]]],
+  ["3r","3 rows",[[0,0,12,4],[0,4,12,4],[0,8,12,4]]],
+  ["1+2","1 large + 2",[[0,0,12,6], ...row(6,6,6,2)]],
+  ["2x2","2 x 2 grid",[...row(0,6,6,2), ...row(6,6,6,2)]],
+  ["2x3","2 columns x 3 rows",[...row(0,6,4,2), ...row(4,6,4,2), ...row(8,6,4,2)]],
+  ["3x2","3 columns x 2 rows",[...row(0,4,6,3), ...row(6,4,6,3)]],
+  ["3x3","3 x 3 grid",[...row(0,4,4,3), ...row(4,4,4,3), ...row(8,4,4,3)]],
+  ["1+3","1 large + 3",[[0,0,12,8], ...row(8,4,4,3)]],
+  ["1+4","1 large + 4",[[0,0,12,9], ...row(9,3,3,4)]],
+  ["2+3","2 large + 3",[...row(0,6,8,2), ...row(8,4,4,3)]],
+  ["2+4","2 large + 4",[...row(0,6,9,2), ...row(9,3,3,4)]],
+  ["4r","4 rows",[[0,0,12,3],[0,3,12,3],[0,6,12,3],[0,9,12,3]]],
+  ["4x4","4 x 4 grid",[...row(0,3,3,4), ...row(3,3,3,4), ...row(6,3,3,4), ...row(9,3,3,4)]],
+];
+const MAX_PAGES = 12;
+const $ = id => document.getElementById(id);
+let cfg = null, units = {}, paths = [], pathMap = {}, pathsState = 'loading', values = null;
+let page = 0, slot = 0, dirty = false, savedRev = 0;
+
+function layoutOf(id) { return LAYOUTS.find(l => l[0] === id) || LAYOUTS.find(l => l[0] === '2x2'); }
+function msg(t, err) { $('msg').textContent = t; $('msg').style.color = err ? 'var(--red)' : 'var(--dim)'; }
+function setDirty(d) { dirty = d; $('save').disabled = !d; if (d) msg('Unsaved changes'); }
+function emptyTile() { return { path:"" }; }
+function curPage() { return cfg.pages[page]; }
+function curTile() {
+  const p = curPage();
+  while (p.tiles.length <= slot) p.tiles.push(emptyTile());
+  return p.tiles[slot];
+}
+function guessLabel(path) {
+  const e = pathMap[path];
+  if (e && e.name) return e.name;
+  const last = path.split('.').pop();
+  return last.replace(/([A-Z])/g, ' $1').toUpperCase().trim().slice(0, 23);
+}
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+async function api(url, opts) {
+  // The panel's small HTTP server can reset connections when the browser opens many at once; retry those
+  for (let attempt = 0; ; attempt++) {
+    let r;
+    try { r = await fetch(url, opts); }
+    catch (e) {
+      if (attempt >= 4) throw e;
+      await new Promise(res => setTimeout(res, 250 * (attempt + 1)));
+      continue;
+    }
+    if (!r.ok) throw new Error(await r.text() || r.statusText);
+    return r.json();
+  }
+}
+
+async function loadAll() {
+  try {
+    [cfg, units] = await Promise.all([api('/api/config'), api('/api/units')]);
+    savedRev = cfg.revision || 0;
+    normalize();
+    page = Math.min(page, cfg.pages.length - 1); slot = 0;
+    setDirty(false); msg('Loaded');
+    render();
+  } catch (e) { msg('Load failed: ' + e.message, true); }
+  loadPaths(false);
+}
+
+function normalize() {
+  cfg.settings = cfg.settings || {};
+  cfg.pages = cfg.pages || [];
+  if (!cfg.pages.length) cfg.pages.push({ name:"Page 1", layout:"2x2", tiles:[] });
+  cfg.pages.forEach(p => { p.tiles = p.tiles || []; });
+}
+
+async function loadPaths(force) {
+  try {
+    const r = await api('/api/paths' + (force ? '?refresh=1' : ''));
+    paths = r.paths || []; pathMap = {};
+    paths.forEach(p => pathMap[p.path] = p);
+    pathsState = r.state || 'ready';
+    if (r.state === 'loading') setTimeout(() => loadPaths(false), 1500);
+    renderTile();
+    if (!$('pathMenu').hidden) openMenu(menuShowAll);
+  } catch (e) { pathsState = 'error'; /* server not reachable */ }
+}
+
+function render() { renderTabs(); renderPage(); renderGrid(); renderTile(); renderSettings(); }
+
+function renderTabs() {
+  $('tabs').innerHTML = '';
+  cfg.pages.forEach((p, i) => {
+    const b = document.createElement('button');
+    b.textContent = (p.name || ('Page ' + (i + 1))) + ({ anchor:' (Anchor)', sail:' (Sail)' }[p.group] || '');
+    if (i === page) b.className = 'sel';
+    b.onclick = () => { page = i; slot = 0; render(); };
+    $('tabs').appendChild(b);
+  });
+}
+
+function renderPage() {
+  const p = curPage();
+  $('pgName').value = p.name;
+  $('pgLayout').innerHTML = LAYOUTS.map(l => `<option value="${l[0]}">${l[1]}</option>`).join('');
+  $('pgLayout').value = layoutOf(p.layout)[0];
+  $('pgGroup').value = p.group || '';
+  $('pgAdd').disabled = $('pgDup').disabled = cfg.pages.length >= MAX_PAGES;
+  $('pgDel').disabled = cfg.pages.length <= 1;
+  $('pgLeft').disabled = page === 0;
+  $('pgRight').disabled = page === cfg.pages.length - 1;
+}
+
+function renderGrid() {
+  const p = curPage(), lay = layoutOf(p.layout);
+  if (slot >= lay[2].length) slot = 0;
+  const g = $('grid'); g.innerHTML = '';
+  lay[2].forEach((c, i) => {
+    const t = p.tiles[i] || emptyTile();
+    const d = document.createElement('div');
+    d.className = 'tile' + (i === slot ? ' sel' : '') + (t.path ? '' : ' empty');
+    d.style.gridColumn = `${c[0] + 1} / span ${c[2]}`;
+    d.style.gridRow = `${c[1] + 1} / span ${c[3]}`;
+    d.dataset.slot = i;
+    const size = Math.min(c[2], c[3] * 1.4) * 7;
+    const lab = c[2] <= 3 ? ' style="font-size:14px"' : '';
+    d.innerHTML = `<div class="lab"${lab}><span>${esc(t.path ? (t.label || guessLabel(t.path)) : '')}</span><span class="u"></span></div>` +
+                  `<div class="val" style="font-size:${t.path ? size : 13}px">${t.path ? '---' : 'Empty'}</div>`;
+    d.onclick = () => { slot = i; renderGrid(); renderTile(); };
+    g.appendChild(d);
+  });
+  renderValues();
+}
+
+function renderValues() {
+  if (!values || !cfg) return;
+  const vp = values.pages[page] || [];
+  document.querySelectorAll('#grid .tile').forEach(d => {
+    const i = +d.dataset.slot, t = curPage().tiles[i];
+    if (!t || !t.path) return;
+    const v = vp[i];
+    d.classList.remove('stale', 'port', 'stbd', 'alarm');
+    if (!v || dirty) { d.classList.add('stale'); return; }
+    d.querySelector('.val').textContent = v.v || '---';
+    d.querySelector('.u').textContent = v.u || '';
+    if (!v.ok) d.classList.add('stale');
+    if (v.side < 0) d.classList.add('port');
+    if (v.side > 0) d.classList.add('stbd');
+    if (v.alarm && !v.acked) d.classList.add('alarm');
+  });
+}
+
+function unitOptions(sk) {
+  const opts = [['', 'Auto' + (sk ? ` (${sk})` : '')]];
+  (units[sk] || []).forEach(u => opts.push(u));
+  return opts;
+}
+
+function renderTile() {
+  if (!cfg) return;
+  const t = curTile();
+  $('tileTitle').textContent = `${curPage().name} - tile ${slot + 1}`;
+  if (document.activeElement !== $('tPath')) $('tPath').value = t.path || '';
+  const e = pathMap[t.path];
+  $('tPathInfo').textContent = t.path ? (e ? `${e.name || ''} ${e.units ? '(' + e.units + ')' : ''}` : 'Not currently reported by the server') : '';
+  $('tLabel').value = t.label || '';
+  $('tLabel').placeholder = t.path ? guessLabel(t.path) : '';
+  const sk = t.skUnits || (e && e.units) || '';
+  $('tUnit').innerHTML = unitOptions(sk).map(o => `<option value="${esc(o[0])}">${esc(o[1])}</option>`).join('');
+  $('tUnit').value = t.unit || '';
+  $('tSk').textContent = sk ? 'Signal K: ' + sk : '';
+  $('tDec').value = String(t.decimals ?? -1);
+  $('angleRow').style.display = (sk === 'rad' || sk === 'deg') ? '' : 'none';
+  $('tAngle').value = t.angle || 'auto';
+  $('tSmooth').value = String(t.smooth ?? 1);
+  $('tTrend').value = String(t.trend ?? 0);
+  $('tLoEn').checked = t.alarmLo !== undefined; $('tLo').value = t.alarmLo ?? '';
+  $('tHiEn').checked = t.alarmHi !== undefined; $('tHi').value = t.alarmHi ?? '';
+  $('tBeep').checked = !!t.beep;
+  document.querySelectorAll('#tilePanel input:not(#tPath), #tilePanel select').forEach(el => el.disabled = !t.path);
+}
+
+function renderSettings() {
+  const s = cfg.settings;
+  $('sTheme').value = s.theme || 'dark';
+  $('sCycle').value = String(s.cycle ?? 0);
+  $('sStale').value = String(s.stale ?? 10);
+  $('sStart').innerHTML = '<option value="-1">Last viewed</option>' + cfg.pages.map((p, i) => `<option value="${i}">${esc(p.name)}</option>`).join('');
+  $('sStart').value = String(s.startPage ?? -1);
+  $('sLock').checked = !!s.locked;
+  $('sAuto').checked = !!s.autoSwitch;
+  $('sAutoKn').value = s.autoSpeed ?? 2;
+  $('sAnchorMin').value = +((s.anchorDelay ?? 300) / 60).toFixed(2);
+  $('sSailS').value = s.sailDelay ?? 60;
+  $('sCycleGroup').checked = s.cycleGroup ?? true;
+  renderMotion();
+}
+
+function renderMotion() {
+  const el = $('motionStatus'), m = values && values.motion;
+  if (!cfg || !cfg.settings.autoSwitch) { el.textContent = ''; return; }
+  const parts = [];
+  ['anchor', 'sail'].forEach(g => {
+    if (!cfg.pages.some(p => p.group === g)) parts.push(`No page is in the ${g === 'anchor' ? 'Anchor' : 'Sail'} group yet.`);
+  });
+  if (!m) parts.unshift(dirty ? 'Save to enable.' : 'Waiting for the display...');
+  else {
+    const name = { anchor:'Anchor', sail:'Sail', '':'not decided yet' };
+    let t = 'Now: ' + name[m.state] + (m.sog !== undefined ? `, SOG ${m.sog.toFixed(1)} kn` : ', no speed over ground data');
+    if (m.pending) {
+      const left = Math.max(0, m.needS - m.pendingS);
+      t += ` \u00b7 switching to ${name[m.pending]} in ${left >= 60 ? Math.floor(left / 60) + ' min ' + (left % 60) + ' s' : left + ' s'}`;
+    }
+    parts.unshift(t);
+  }
+  el.textContent = parts.join(' ');
+}
+
+// --- Page editing ---
+$('pgName').oninput = () => { curPage().name = $('pgName').value; renderTabs(); setDirty(true); };
+$('pgLayout').onchange = () => { curPage().layout = $('pgLayout').value; renderGrid(); renderTile(); setDirty(true); };
+$('pgGroup').onchange = () => { const g = $('pgGroup').value; if (g) curPage().group = g; else delete curPage().group; renderTabs(); renderMotion(); setDirty(true); };
+$('pgAdd').onclick = () => { cfg.pages.splice(page + 1, 0, { name:'Page ' + (cfg.pages.length + 1), layout:'2x2', tiles:[] }); page++; slot = 0; render(); setDirty(true); };
+$('pgDup').onclick = () => { const c = JSON.parse(JSON.stringify(curPage())); c.name = (c.name + ' 2').slice(0, 19); cfg.pages.splice(page + 1, 0, c); page++; render(); setDirty(true); };
+$('pgDel').onclick = () => {
+  if (cfg.pages.length <= 1 || !confirm('Delete page "' + curPage().name + '"?')) return;
+  cfg.pages.splice(page, 1);
+  const sp = cfg.settings.startPage ?? -1;
+  if (sp === page) cfg.settings.startPage = -1; else if (sp > page) cfg.settings.startPage = sp - 1;
+  page = Math.max(0, page - 1); slot = 0;
+  render(); setDirty(true); msg('Page deleted - press Save to update the display');
+};
+function movePage(d) { const q = page + d; [cfg.pages[page], cfg.pages[q]] = [cfg.pages[q], cfg.pages[page]]; page = q; render(); setDirty(true); }
+$('pgLeft').onclick = () => movePage(-1);
+$('pgRight').onclick = () => movePage(1);
+
+// --- Tile editing ---
+function commitPath(value) {
+  closeMenu();
+  const t = curTile(), p = (value || '').trim();
+  if (p === t.path) { $('tPath').value = p; return; }
+  const e = pathMap[p];
+  Object.assign(t, { path:p, label:'', skUnits:e ? e.units : '', unit:'', decimals:-1, angle:'auto' });
+  delete t.alarmLo; delete t.alarmHi;
+  if (t.smooth === undefined) t.smooth = 1;
+  if (t.trend === undefined) t.trend = 0;
+  if (p) t.label = guessLabel(p);
+  $('tPath').value = p;
+  renderGrid(); renderTile(); setDirty(true);
+}
+
+// --- Path combobox: full picklist (grouped) + type-to-filter autocomplete ---
+let menuShowAll = true, menuActive = -1;
+const PATH_RE = /^[A-Za-z0-9_]+(\.[A-Za-z0-9_\-]+)+$/;
+function queryTokens(q) { return q.toLowerCase().split(/[\s.]+/).filter(Boolean); }
+function matchPaths(q) {
+  const toks = queryTokens(q), ql = q.toLowerCase().trim();
+  if (!toks.length) return paths.slice().sort((a, b) => a.path.localeCompare(b.path));
+  const out = [];
+  for (const p of paths) {
+    const pl = p.path.toLowerCase();
+    const hay = pl + ' ' + (p.name || '').toLowerCase() + ' ' + (p.units || '').toLowerCase();
+    if (!toks.every(t => hay.includes(t))) continue;
+    const score = pl.startsWith(ql) ? 0 : pl.split('.').some(s => s.startsWith(toks[0])) ? 1 : 2;
+    out.push([score, p]);
+  }
+  return out.sort((a, b) => a[0] - b[0] || a[1].path.localeCompare(b[1].path)).map(x => x[1]);
+}
+function highlight(text, toks) {
+  const lo = text.toLowerCase(), on = new Array(text.length).fill(false);
+  toks.forEach(t => { for (let i = lo.indexOf(t); i >= 0; i = lo.indexOf(t, i + t.length)) on.fill(true, i, i + t.length); });
+  let s = '', open = false;
+  for (let i = 0; i < text.length; i++) {
+    if (on[i] !== open) { s += on[i] ? '<mark>' : '</mark>'; open = on[i]; }
+    s += esc(text[i]);
+  }
+  return s + (open ? '</mark>' : '');
+}
+function menuOpts() { return $('pathMenu').querySelectorAll('.opt'); }
+function setActive(i, center) {
+  const opts = menuOpts(), m = $('pathMenu');
+  opts.forEach((el, k) => el.classList.toggle('act', k === i));
+  menuActive = i;
+  const el = opts[i];
+  if (!el) return;
+  if (center) m.scrollTop = el.offsetTop - m.clientHeight / 2;
+  else if (el.offsetTop - 28 < m.scrollTop) m.scrollTop = el.offsetTop - 28;
+  else if (el.offsetTop + el.offsetHeight > m.scrollTop + m.clientHeight) m.scrollTop = el.offsetTop + el.offsetHeight - m.clientHeight;
+}
+function openMenu(showAll) {
+  if ($('tPath').disabled) return;
+  menuShowAll = showAll;
+  const q = showAll ? '' : $('tPath').value.trim();
+  const toks = queryTokens(q), list = matchPaths(q), cur = curTile().path;
+  let html = '', grp = null;
+  list.forEach(p => {
+    if (!toks.length) {
+      const g = p.path.split('.')[0];
+      if (g !== grp) { grp = g; html += `<div class="grp">${esc(g)}</div>`; }
+    }
+    html += `<div class="opt${p.path === cur ? ' cur' : ''}" role="option" data-path="${esc(p.path)}">` +
+            `<span class="p">${highlight(p.path, toks)}${p.name ? `<span class="n">${esc(p.name)}</span>` : ''}</span>` +
+            `<span class="u">${esc(p.units || '')}</span></div>`;
+  });
+  if (!list.length) {
+    html = `<div class="note">${paths.length ? 'No matching paths' :
+            pathsState === 'loading' ? 'Loading paths from Signal K...' : 'No paths available from the server'}</div>`;
+  }
+  if (q && !pathMap[q] && PATH_RE.test(q)) html += `<div class="opt typed" role="option" data-path="${esc(q)}">Use "${esc(q)}" as typed</div>`;
+  else if (q && !list.length) html += `<div class="note">Custom paths must look like navigation.speedOverGround</div>`;
+  else if (list.length) html += `<div class="note">${list.length} of ${paths.length} paths</div>`;
+  const m = $('pathMenu');
+  m.innerHTML = html; m.hidden = false;
+  $('tPath').setAttribute('aria-expanded', 'true');
+  menuActive = -1;
+  if (!toks.length) { const ci = list.findIndex(p => p.path === cur); if (ci >= 0) setActive(ci, true); else m.scrollTop = 0; }
+  else { m.scrollTop = 0; if (menuOpts().length) setActive(0); }
+}
+function closeMenu() { $('pathMenu').hidden = true; menuActive = -1; $('tPath').setAttribute('aria-expanded', 'false'); }
+
+$('tPath').addEventListener('focus', () => { $('tPath').select(); openMenu(true); });
+$('tPath').addEventListener('click', () => { if ($('pathMenu').hidden) { $('tPath').select(); openMenu(true); } });
+$('tPath').addEventListener('input', () => openMenu(false));
+$('tPath').addEventListener('blur', () => {
+  // Accept an exactly typed known path; otherwise keep the tile's current path
+  const v = $('tPath').value.trim();
+  if (pathMap[v] && v !== curTile().path) commitPath(v);
+  else { closeMenu(); $('tPath').value = curTile().path || ''; }
+});
+$('tPath').addEventListener('keydown', e => {
+  const open = !$('pathMenu').hidden, n = menuOpts().length;
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (!open) { openMenu(true); return; }
+    if (!n) return;
+    const d = e.key === 'ArrowDown' ? 1 : -1;
+    setActive(menuActive < 0 ? (d > 0 ? 0 : n - 1) : (menuActive + d + n) % n);
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    if (open && menuActive >= 0) commitPath(menuOpts()[menuActive].dataset.path);
+    else {
+      const v = $('tPath').value.trim();
+      if (!v || pathMap[v] || PATH_RE.test(v)) commitPath(v); else openMenu(false);
+    }
+  } else if (e.key === 'Tab' && open && menuActive >= 0) {
+    commitPath(menuOpts()[menuActive].dataset.path);
+  } else if (e.key === 'Escape' && open) {
+    e.preventDefault(); closeMenu(); $('tPath').value = curTile().path || ''; $('tPath').select();
+  }
+});
+$('pathMenu').addEventListener('mousedown', e => {
+  e.preventDefault();   // keep focus in the input
+  const el = e.target.closest('.opt');
+  if (el) commitPath(el.dataset.path);
+});
+$('pathMenu').addEventListener('mousemove', e => {
+  const el = e.target.closest('.opt');
+  if (el) { const i = [...menuOpts()].indexOf(el); if (i !== menuActive) setActive(i); }
+});
+$('pathToggle').addEventListener('mousedown', e => e.preventDefault());
+$('pathToggle').onclick = () => {
+  if (!$('pathMenu').hidden && menuShowAll) { closeMenu(); return; }
+  if (document.activeElement !== $('tPath')) $('tPath').focus(); else openMenu(true);
+};
+function tileField(id, fn) { $(id).addEventListener('input', () => { fn(curTile(), $(id)); renderGrid(); setDirty(true); }); }
+tileField('tLabel', (t, el) => t.label = el.value);
+tileField('tUnit', (t, el) => t.unit = el.value);
+tileField('tDec', (t, el) => t.decimals = +el.value);
+tileField('tAngle', (t, el) => t.angle = el.value);
+tileField('tSmooth', (t, el) => t.smooth = +el.value);
+tileField('tTrend', (t, el) => t.trend = +el.value);
+tileField('tBeep', (t, el) => t.beep = el.checked);
+function alarmField(en, val, key) {
+  const fn = t => { if ($(en).checked && $(val).value !== '') t[key] = +$(val).value; else delete t[key]; };
+  tileField(en, fn); tileField(val, fn);
+}
+alarmField('tLoEn', 'tLo', 'alarmLo');
+alarmField('tHiEn', 'tHi', 'alarmHi');
+$('tClear').onclick = () => { curPage().tiles[slot] = emptyTile(); renderGrid(); renderTile(); setDirty(true); };
+$('refreshPaths').onclick = () => loadPaths(true);
+
+// --- Settings ---
+function setField(id, fn) { $(id).addEventListener('input', () => { fn(cfg.settings, $(id)); setDirty(true); }); }
+setField('sTheme', (s, el) => s.theme = el.value);
+setField('sCycle', (s, el) => s.cycle = +el.value);
+setField('sStale', (s, el) => s.stale = +el.value);
+setField('sStart', (s, el) => s.startPage = +el.value);
+setField('sLock', (s, el) => s.locked = el.checked);
+setField('sAuto', (s, el) => { s.autoSwitch = el.checked; renderMotion(); });
+setField('sAutoKn', (s, el) => { if (el.value !== '') s.autoSpeed = +el.value; });
+setField('sAnchorMin', (s, el) => { if (el.value !== '') s.anchorDelay = Math.round(+el.value * 60); });
+setField('sSailS', (s, el) => { if (el.value !== '') s.sailDelay = Math.round(+el.value); });
+setField('sCycleGroup', (s, el) => s.cycleGroup = el.checked);
+
+// --- Toolbar ---
+function payload() {
+  const c = JSON.parse(JSON.stringify(cfg));
+  delete c.revision;
+  c.pages.forEach(p => { p.tiles = p.tiles.slice(0, layoutOf(p.layout)[2].length); });
+  return c;
+}
+$('save').onclick = async () => {
+  try {
+    cfg = await api('/api/config', { method:'PUT', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify(payload()) });
+    savedRev = cfg.revision || 0; normalize(); setDirty(false); msg('Saved'); render();
+  } catch (e) { msg('Save failed: ' + e.message, true); }
+};
+$('revert').onclick = () => { if (!dirty || confirm('Discard unsaved changes?')) loadAll(); };
+$('reset').onclick = async () => {
+  if (!confirm('Replace all pages with the default dashboard?')) return;
+  try { cfg = await api('/api/reset', { method:'POST' }); savedRev = cfg.revision || 0; normalize(); page = 0; slot = 0; setDirty(false); msg('Defaults restored'); render(); }
+  catch (e) { msg('Reset failed: ' + e.message, true); }
+};
+$('export').onclick = () => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(payload(), null, 2)], { type:'application/json' }));
+  a.download = 'instruments-dashboard.json'; a.click();
+};
+$('importBtn').onclick = () => $('importFile').click();
+$('importFile').onchange = async () => {
+  const f = $('importFile').files[0]; if (!f) return;
+  try {
+    const c = JSON.parse(await f.text());
+    if (!Array.isArray(c.pages)) throw new Error('No pages in file');
+    cfg = c; normalize(); page = 0; slot = 0; render(); setDirty(true); msg('Imported - press Save to send to the display');
+  } catch (e) { msg('Import failed: ' + e.message, true); }
+  $('importFile').value = '';
+};
+
+// --- Panel display (day/night, brightness) ---
+let dispBusy = 0;
+function hm(s) { s = Math.round(s); return String(Math.floor(s / 3600)).padStart(2, '0') + ':' + String(Math.floor(s / 60) % 60).padStart(2, '0'); }
+function renderDisplay(d) {
+  const s = d.settings, st = d.status;
+  if (!dispBusy) {
+    $('dMode').value = s.mode; $('dDay').value = s.day; $('dNight').value = s.night;
+    $('dRed').checked = s.red; $('dSwitch').value = String(s.switch);
+    if (s.timeZones && $('dTz').options.length !== s.timeZones.length) {
+      $('dTz').innerHTML = s.timeZones.map(n => `<option>${esc(n)}</option>`).join('');
+    }
+    if (s.timeZone) $('dTz').value = s.timeZone;
+  }
+  $('dDayV').textContent = $('dDay').value + ' %'; $('dNightV').textContent = $('dNight').value + ' %';
+  const parts = [(st.night ? 'Night' : 'Day') + ' now, level ' + st.level + ' %'];
+  if (st.sunElevation !== undefined) parts.push('sun ' + st.sunElevation.toFixed(1) + '\u00b0');
+  if (st.sunrise !== undefined) parts.push('sunrise ' + hm(st.sunrise));
+  if (st.sunset !== undefined) parts.push('sunset ' + hm(st.sunset));
+  if (st.localTime !== undefined) parts.push('local time ' + hm(st.localTime));
+  if (st.tzName) parts.push('time zone ' + st.tzName);
+  if (st.lat !== undefined) parts.push('position ' + st.lat.toFixed(3) + ', ' + st.lon.toFixed(3) + (st.posLive ? '' : ' (saved)'));
+  else parts.push('no position yet');
+  parts.push('clock from ' + ({ ntp:'NTP', signalk:'Signal K', none:'(not set)' })[st.timeSource]);
+  $('dStatus').textContent = parts.join(' \u00b7 ');
+}
+async function loadDisplay() { try { renderDisplay(await api('/api/display')); } catch (e) {} }
+let dispTimer = null;
+function sendDisplay() {
+  dispBusy++;
+  clearTimeout(dispTimer);
+  dispTimer = setTimeout(async () => {
+    try {
+      const body = { mode:$('dMode').value, day:+$('dDay').value, night:+$('dNight').value, red:$('dRed').checked, switch:+$('dSwitch').value };
+      if ($('dTz').value) body.timeZone = $('dTz').value;
+      dispBusy = 0;
+      renderDisplay(await api('/api/display', { method:'PUT', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify(body) }));
+    } catch (e) { dispBusy = 0; msg('Display update failed: ' + e.message, true); }
+  }, 250);
+}
+['dMode','dDay','dNight','dRed','dSwitch','dTz'].forEach(id => $(id).addEventListener('input', () => {
+  $('dDayV').textContent = $('dDay').value + ' %'; $('dNightV').textContent = $('dNight').value + ' %'; sendDisplay();
+}));
+loadDisplay();
+setInterval(() => { if (!dispBusy) loadDisplay(); }, 10000);
+
+// --- Tides ---
+let tideBusy = 0, tidePortsN = -1;
+function renderTides(d) {
+  if (d.ports && d.ports.length !== tidePortsN) {
+    tidePortsN = d.ports.length;
+    const ps = d.ports.slice().sort((a, b) => a.name.localeCompare(b.name));
+    $('tdPort').innerHTML = '<option value="">Auto (nearest within 50 NM)</option>' +
+      ps.map(p => `<option value="${esc(p.name)}">${esc(p.name)}${p.timesOnly ? ' (times only)' : ''}</option>`).join('');
+  }
+  const s = d.settings || {};
+  if (!tideBusy) {
+    if (s.port && ![...$('tdPort').options].some(o => o.value === s.port)) $('tdPort').add(new Option(s.port, s.port));
+    $('tdPort').value = s.port || '';
+    $('tdOffs').value = s.offset === null || s.offset === undefined ? '' : s.offset;
+    $('tdBaro').checked = !!s.baro;
+  }
+  const lines = [];
+  if (!d.loaded) lines.push('No tide table loaded' + (d.error ? ' (' + d.error + ')' : '') + '. Build it with tools/linz_tides_pack.py and upload it here.');
+  else lines.push(`Table: ${d.file.ports} ports, ${d.file.from} to ${d.file.to}`);
+  const i = d.info || {};
+  if (i.port) lines.push(`Port: ${i.port}${i.manual ? ' (manual)' : ''}${i.distanceNm !== undefined ? ', ' + i.distanceNm.toFixed(1) + ' NM away' : ''}${i.heights ? '' : ', times only'}`);
+  else if (d.loaded) lines.push('No tide port within 50 NM (or no GPS position)');
+  if (i.valid) {
+    if (i.height !== undefined) lines.push(`Height now ${i.height.toFixed(2)} m (${i.rate >= 0 ? 'rising' : 'falling'} ${Math.abs(i.rate).toFixed(2)} m/h), range ${i.range.toFixed(2)} m` +
+      (i.baroCorrection !== undefined ? `, baro ${i.baroCorrection >= 0 ? '+' : ''}${i.baroCorrection.toFixed(2)} m` : ''));
+    lines.push('Depth: ' + (i.depth !== undefined ? `${i.depth.toFixed(2)} m below surface (${i.depthSource})` : 'no depth source'));
+    (i.next || []).forEach(e => lines.push(`${e.type === 'high' ? 'HW' : 'LW'} ${e.time} (in ${hm(e.inS)})` +
+      (e.height !== undefined ? ` ${e.height.toFixed(2)} m` : '') + (e.depth !== undefined ? `, depth ${e.depth.toFixed(2)} m` : '')));
+  }
+  const m = d.moon || {};
+  if (m.phase) {
+    lines.push(`Moon: ${m.phase}, ${m.illumination}% lit` + (m.rise ? `, rise ${m.rise}` : '') + (m.set ? `, set ${m.set}` : ''));
+    (m.periods || []).forEach(p => lines.push(`Solunar ${p.type}: ${p.start} - ${p.end.slice(-5)}`));
+  }
+  $('tdStatus').innerHTML = lines.map(esc).join('<br>');
+}
+async function loadTides(ports) { try { renderTides(await api('/api/tides' + (ports ? '?ports=1' : ''))); } catch (e) {} }
+async function sendTides() {
+  tideBusy++;
+  try {
+    const o = $('tdOffs').value.trim();
+    const body = { port:$('tdPort').value, offset:o === '' ? null : +o, baro:$('tdBaro').checked };
+    const r = await api('/api/tides/settings', { method:'PUT', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify(body) });
+    tideBusy = 0;
+    renderTides(r);
+    msg('Tide settings applied');
+  } catch (e) { tideBusy = 0; msg('Tide settings failed: ' + e.message, true); loadTides(false); }
+}
+['tdPort','tdOffs','tdBaro'].forEach(id => $(id).addEventListener('change', sendTides));
+$('tdUpload').onclick = async () => {
+  const f = $('tdFile').files[0];
+  if (!f) { msg('Choose tides.bin first', true); return; }
+  $('tdUpload').disabled = true; tideBusy++;
+  msg('Uploading tide table (' + Math.round(f.size / 1024) + ' KB)...');
+  try {
+    await api('/api/tides', { method:'PUT', headers:{ 'Content-Type':'application/octet-stream' }, body:f });
+    msg('Tide table installed');
+  } catch (e) { msg('Upload failed: ' + e.message, true); }
+  tideBusy = 0; tidePortsN = -1; $('tdUpload').disabled = false; $('tdFile').value = '';
+  loadTides(true);
+};
+loadTides(true);
+setInterval(() => { if (!tideBusy) loadTides(tidePortsN < 0); }, 10000);
+
+// --- Screenshot ---
+function shot() { $('shot').src = '/api/screenshot.bmp?t=' + Date.now(); }
+$('shotBtn').onclick = shot;
+setInterval(() => { if ($('shotAuto').checked) shot(); }, 5000);
+
+// --- Live values ---
+async function poll() {
+  try {
+    values = await api('/api/values');
+    $('conn').className = 'dot' + (values.connected ? ' on' : '');
+    $('connTxt').textContent = values.connected ? 'Signal K connected' : 'Signal K offline';
+    if (!cfg) await loadAll();
+    else if (!dirty && values.revision !== savedRev) { await loadAll(); }
+    renderValues();
+    renderMotion();
+  } catch (e) { $('conn').className = 'dot'; $('connTxt').textContent = 'Display offline'; }
+  setTimeout(poll, 1000);
+}
+window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+loadAll().then(poll);
+</script>
+</body>
+</html>

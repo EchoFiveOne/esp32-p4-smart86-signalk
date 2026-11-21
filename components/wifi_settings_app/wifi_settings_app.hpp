@@ -31,7 +31,9 @@ protected:
     static void on_connect_btn(lv_event_t *e);
     static void on_disconnect_btn(lv_event_t *e);
     static void on_known_connect(lv_event_t *e);
+    static void on_forget_btn(lv_event_t *e);
     static void on_poll_timer(lv_timer_t *t);
+    lv_obj_t *add_forget_btn(lv_obj_t *parent, int saved_idx);
 
     /* Two view containers — only one visible at a time */
     lv_obj_t   *_connected_view   = nullptr;
@@ -63,6 +65,10 @@ protected:
     bool _scan_requested = false;
     bool _showing_connected = false;
     wifi_mgr_state_t _prev_state = (wifi_mgr_state_t)-1;
+
+    /* Credentials from the Connect button, saved only once that network connects */
+    WifiSavedNetwork _pending = {};
+    bool _pending_save = false;
 
 private:
 };

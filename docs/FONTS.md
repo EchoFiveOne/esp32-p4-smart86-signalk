@@ -53,13 +53,14 @@ Add more ranges as needed (e.g., `0x41-0x5A` for A–Z uppercase).
 | `components/wind_rose_app/lv_font_montserrat_62.c` | 62px | Montserrat Bold | digits, space, dash, period, degree | Wind Rose corner panels |
 | `components/wind_rose_app/lv_font_montserrat_bold_50.c` | 50px | Montserrat Bold | digits, space, dash, period, degree | Wind Rose TWS overlay |
 | `components/autopilot_app/lv_font_roboto_96.c` | 144px* | Roboto Bold | digits, degree, space, dash | Autopilot heading |
-| `components/data_browser_app/lv_font_montserrat_90.c` | 90px | Montserrat Bold | digits, period, dash, degree, percent | Data Browser degree symbol (1/3 of 310) |
-| `components/data_browser_app/lv_font_montserrat_120.c` | 210px** | Montserrat Bold | digits, period, dash, degree, percent | Data Browser value (4+ chars) |
-| `components/data_browser_app/lv_font_montserrat_310.c` | 310px | Montserrat Bold | digits, period, dash, degree, percent | Data Browser value (3 chars) |
-| `components/data_browser_app/lv_font_montserrat_360.c` | 360px | Montserrat Bold | digits, period, dash, degree, percent | Data Browser value (1-2 chars) |
+| `components/instruments_app/lv_font_montserrat_120.c` | 210px** | Montserrat Bold | digits, period, dash, degree, percent | Instruments tile values (4+ chars, large tiles) |
+| `components/instruments_app/lv_font_montserrat_310.c` | 310px | Montserrat Bold | digits, period, dash, degree, percent | Instruments tile values (3 chars, single tile) |
+| `components/instruments_app/lv_font_montserrat_360.c` | 360px | Montserrat Bold | digits, period, dash, degree, percent | Instruments tile values (1-2 chars, single tile) |
+| `components/instruments_app/lv_font_inst_{176,144,116,92,72,56,44}.c` | 176–44px | Montserrat Bold | digits, space, period, dash, degree, percent | Instruments tile values (largest that fits) |
+| `components/instruments_app/lv_font_inst_label_{36,30}.c` | 36/30px | Montserrat Bold | ASCII 0x20–0x7E + degree (`-r 0x20-0x7E,176`) | Instruments tile titles and units (36, falls back to 30) |
 
 \* The autopilot font is named `_96` but was generated at `--size 144` (legacy naming).
-\*\* The data browser `_120` font was regenerated at 210px (name kept for code compatibility).
+\*\* The `_120` font was regenerated at 210px (name kept for code compatibility). These three fonts came from the former Data Browser app, which has been removed.
 
 ## After Generating
 

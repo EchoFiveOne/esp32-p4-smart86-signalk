@@ -172,7 +172,7 @@ static void auth_task(void *arg)
 
     cJSON *body = cJSON_CreateObject();
     cJSON_AddStringToObject(body, "clientId", s_client_id);
-    cJSON_AddStringToObject(body, "description", "Autopilot Controller");
+    cJSON_AddStringToObject(body, "description", "Smart86 Instrument Panel");
     char *body_str = cJSON_PrintUnformatted(body);
     cJSON_Delete(body);
 
@@ -205,6 +205,8 @@ static void auth_task(void *arg)
             strncpy(s_error, "Security not enabled on server.\nSet up admin at SignalK web UI.", sizeof(s_error) - 1);
         } else if (status == 401 || status == 403) {
             strncpy(s_error, "Access denied by server.", sizeof(s_error) - 1);
+        } else if (status == 400) {
+            strncpy(s_error, "Server already knows this device.\nDelete it under Security > Devices.", sizeof(s_error) - 1);
         } else if (err != ESP_OK) {
             strncpy(s_error, "Cannot reach SignalK server.", sizeof(s_error) - 1);
         } else {
@@ -250,8 +252,13 @@ static void auth_task(void *arg)
     char poll_url[384];
     snprintf(poll_url, sizeof(poll_url), "%s%s", s_base_url, href);
 
-    for (int attempt = 0; attempt < 60; attempt++) {
-        vTaskDelay(pdMS_TO_TICKS(2000));
+    /* Approval needs someone at the admin UI, so keep polling well past
+     * the first couple of minutes (2 s for 2 min, then 10 s, 30 min total). */
+    const int POLL_TOTAL_MS = 30 * 60 * 1000;
+    for (int waited_ms = 0; waited_ms < POLL_TOTAL_MS; ) {
+        int step_ms = waited_ms < 120000 ? 2000 : 10000;
+        vTaskDelay(pdMS_TO_TICKS(step_ms));
+        waited_ms += step_ms;
 
         hbuf.len = 0;
         resp_buf[0] = '\0';
@@ -269,6 +276,12 @@ static void auth_task(void *arg)
         status = esp_http_client_get_status_code(pc);
         esp_http_client_cleanup(pc);
 
+        if (status == 404) {
+            /* Request lost, e.g. server restarted — start over */
+            ESP_LOGW(TAG, "Access request no longer known to server");
+            strncpy(s_error, "Request expired on server.", sizeof(s_error) - 1);
+            break;
+        }
         if (err != ESP_OK || status != 200) {
             ESP_LOGW(TAG, "Poll error: err=%d status=%d", err, status);
             continue;
@@ -308,11 +321,13 @@ static void auth_task(void *arg)
         }
 
         cJSON_Delete(pr);
-        ESP_LOGD(TAG, "Poll %d/60: still pending", attempt + 1);
+        ESP_LOGD(TAG, "Poll %d s: still pending", waited_ms / 1000);
     }
 
-    ESP_LOGW(TAG, "Polling timed out after 120s");
-    strncpy(s_error, "Timed out waiting for approval.", sizeof(s_error) - 1);
+    if (!s_error[0]) {
+        ESP_LOGW(TAG, "Polling timed out");
+        strncpy(s_error, "Timed out waiting for approval.", sizeof(s_error) - 1);
+    }
     s_state = SK_AUTH_ERROR;
     s_task = NULL;
     vTaskDelete(NULL);

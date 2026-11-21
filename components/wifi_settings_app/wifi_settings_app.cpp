@@ -107,6 +107,8 @@ void WifiSettingsApp::build_ui()
     lv_label_set_text(_conn_ssid_lbl, "");
     lv_obj_set_style_text_font(_conn_ssid_lbl, &lv_font_montserrat_36, 0);
     lv_obj_set_style_text_color(_conn_ssid_lbl, lv_color_white(), 0);
+    lv_label_set_long_mode(_conn_ssid_lbl, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(_conn_ssid_lbl, 340);
     lv_obj_align(_conn_ssid_lbl, LV_ALIGN_LEFT_MID, 0, 5);
 
     _conn_rssi_lbl = lv_label_create(conn_card);
@@ -127,6 +129,11 @@ void WifiSettingsApp::build_ui()
     lv_label_set_text(disc_lbl, "Disconnect");
     lv_obj_set_style_text_font(disc_lbl, &lv_font_montserrat_14, 0);
     lv_obj_center(disc_lbl);
+
+    /* Forget the connected network (index -1 = current) */
+    lv_obj_t *cur_forget = add_forget_btn(conn_card, -1);
+    lv_obj_set_size(cur_forget, 120, 44);
+    lv_obj_align(cur_forget, LV_ALIGN_RIGHT_MID, -170, 0);
 
     /* Saved networks list area */
     _conn_saved_area = lv_obj_create(_connected_view);
@@ -321,6 +328,9 @@ void WifiSettingsApp::show_connected_view()
             lv_label_set_text(blbl, "Switch");
             lv_obj_set_style_text_font(blbl, &lv_font_montserrat_14, 0);
             lv_obj_center(blbl);
+
+            lv_obj_t *fbtn = add_forget_btn(row, i);
+            lv_obj_align(fbtn, LV_ALIGN_RIGHT_MID, -140, 0);
 
             row_y += 52;
         }
@@ -534,6 +544,9 @@ void WifiSettingsApp::on_connect_btn(lv_event_t *e)
         return;
     }
 
+    strlcpy(app->_pending.ssid, ssid, sizeof(app->_pending.ssid));
+    strlcpy(app->_pending.password, pw, sizeof(app->_pending.password));
+    app->_pending_save = true;
     ESP_LOGI(TAG, "Connect: SSID=%s", ssid);
     app->set_status("Connecting...", lv_color_hex(0xf39c12));
 }
@@ -563,6 +576,65 @@ void WifiSettingsApp::on_known_connect(lv_event_t *e)
     }
 }
 
+/* ── Forget saved network — two taps: "Forget" then "Confirm" ────────── */
+
+lv_obj_t *WifiSettingsApp::add_forget_btn(lv_obj_t *parent, int saved_idx)
+{
+    lv_obj_t *btn = lv_btn_create(parent);
+    lv_obj_set_size(btn, 120, 36);
+    lv_obj_set_style_bg_color(btn, lv_color_hex(0x555566), 0);
+    lv_obj_set_style_bg_color(btn, lv_color_hex(0xe74c3c), LV_STATE_CHECKED);
+    lv_obj_set_style_radius(btn, 6, 0);
+    lv_obj_set_user_data(btn, (void *)(intptr_t)saved_idx);
+    lv_obj_add_event_cb(btn, on_forget_btn, LV_EVENT_CLICKED, this);
+
+    lv_obj_t *lbl = lv_label_create(btn);
+    lv_label_set_text(lbl, "Forget");
+    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, 0);
+    lv_obj_center(lbl);
+    return btn;
+}
+
+void WifiSettingsApp::on_forget_btn(lv_event_t *e)
+{
+    lv_obj_t *btn = lv_event_get_target(e);
+    auto *app = (WifiSettingsApp *)lv_event_get_user_data(e);
+    int idx = (int)(intptr_t)lv_obj_get_user_data(btn);
+
+    if (!lv_obj_has_state(btn, LV_STATE_CHECKED)) {
+        lv_obj_add_state(btn, LV_STATE_CHECKED);
+        lv_label_set_text(lv_obj_get_child(btn, 0), "Confirm");
+        return;
+    }
+
+    char ssid[sizeof(app->_saved[0].ssid)];
+    if (idx < 0) {
+        strlcpy(ssid, wifi_manager_get_ssid(), sizeof(ssid));
+    } else if (idx < app->_saved_count) {
+        strlcpy(ssid, app->_saved[idx].ssid, sizeof(ssid));
+    } else {
+        return;
+    }
+
+    ESP_LOGI(TAG, "Forget network: %s", ssid);
+    wifi_manager_forget_network(ssid);
+    app->_saved_count = wifi_manager_load_saved(app->_saved, WIFI_MGR_MAX_SAVED);
+
+    if (idx < 0) {
+        wifi_manager_disconnect();
+        app->set_status("Network forgotten", lv_color_hex(0xaaaaaa));
+        app->show_disconnected_view();
+        app->show_known_networks();
+    } else {
+        /* Deferred: this button is deleted by the rebuild */
+        lv_async_call([](void *p) {
+            auto *a = (WifiSettingsApp *)p;
+            a->_showing_connected = false;
+            a->show_connected_view();
+        }, app);
+    }
+}
+
 /* ── Poll timer — switches view based on connection state ────────────── */
 
 void WifiSettingsApp::on_poll_timer(lv_timer_t *t)
@@ -582,14 +654,12 @@ void WifiSettingsApp::on_poll_timer(lv_timer_t *t)
         app->_prev_state = state;
         switch (state) {
         case WIFI_MGR_CONNECTED: {
-            /* Save credentials */
-            if (!app->_showing_connected) {
-                const char *ssid = lv_textarea_get_text(app->_ssid_ta);
-                const char *pw   = lv_textarea_get_text(app->_pw_ta);
-                if (strlen(ssid) > 0) {
-                    wifi_manager_save_network(ssid, pw);
-                }
+            /* Save only what the user entered, and only once that network is up —
+             * not stale text-field contents on a background auto-reconnect. */
+            if (app->_pending_save && strcmp(wifi_manager_get_ssid(), app->_pending.ssid) == 0) {
+                wifi_manager_save_network(app->_pending.ssid, app->_pending.password);
             }
+            app->_pending_save = false;
             /* Refresh saved list and switch to connected view */
             app->_saved_count = wifi_manager_load_saved(app->_saved, WIFI_MGR_MAX_SAVED);
             app->_showing_connected = false;  /* force refresh */
@@ -597,6 +667,7 @@ void WifiSettingsApp::on_poll_timer(lv_timer_t *t)
             break;
         }
         case WIFI_MGR_CONNECT_FAILED: {
+            app->_pending_save = false;
             const char *err = wifi_manager_get_error();
             app->set_status(err[0] ? err : "Connection failed", lv_color_hex(0xe74c3c));
             app->show_disconnected_view();

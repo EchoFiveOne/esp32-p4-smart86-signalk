@@ -50,6 +50,16 @@ bool signalk_client_get_data(InstrumentStore *dest)
 void signalk_client_start(const char *)  {}
 void signalk_client_stop(void)   {}
 bool signalk_client_needs_rediscovery(void) { return false; }
-void signalk_client_subscribe(const char *, int) {}
+bool signalk_client_get_values(const char *const *paths, int count, PathValue *out)
+{
+    static InstrumentStore s;
+    if (!signalk_client_get_data(&s)) return false;
+    for (int i = 0; i < count; i++) {
+        const PathValue *pv = paths[i] ? store_find(s, paths[i]) : nullptr;
+        out[i] = pv ? *pv : PathValue{};
+    }
+    return true;
+}
+bool signalk_client_subscribe(const char *, int) { return true; }
 void signalk_client_unsubscribe(const char *) {}
 void signalk_client_watch(const char *, signalk_value_cb_t, void *) {}

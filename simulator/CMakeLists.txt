@@ -49,11 +49,6 @@ add_executable(lvgl_sim
     ../components/wind_rose_app/lv_font_montserrat_62.c
     ../components/wind_rose_app/lv_font_montserrat_67.c
     ../components/wind_rose_app/lv_font_montserrat_bold_50.c
-    ../components/data_browser_app/data_browser_app.cpp
-    ../components/data_browser_app/lv_font_montserrat_90.c
-    ../components/data_browser_app/lv_font_montserrat_120.c
-    ../components/data_browser_app/lv_font_montserrat_310.c
-    ../components/data_browser_app/lv_font_montserrat_360.c
     stubs/esp_ui_stub.cpp
     stubs/signalk_client_stub.cpp
     stubs/signalk_auth_stub.cpp
@@ -74,7 +69,6 @@ target_include_directories(lvgl_sim PRIVATE
     # Stubs FIRST — shadow esp_log.h, esp_timer.h, esp_ui.hpp, sdkconfig.h, freertos/
     ${CMAKE_CURRENT_SOURCE_DIR}/stubs
     # Firmware component headers
-    ${CMAKE_CURRENT_SOURCE_DIR}/../components/data_browser_app
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/instrument_ui
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/autopilot_app
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/wind_rose_app

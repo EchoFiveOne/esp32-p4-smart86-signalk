@@ -23,7 +23,7 @@ struct PathValue {
 // Access must be protected by the provided mutex.
 // ---------------------------------------------------------------------------
 
-static const int STORE_MAX_ENTRIES = 64;
+static const int STORE_MAX_ENTRIES = 96;
 
 struct InstrumentStore {
     PathValue entries[STORE_MAX_ENTRIES];
@@ -124,12 +124,28 @@ bool signalk_client_needs_rediscovery(void);
 // dest->mutex is NOT set (caller owns the original mutex).
 bool signalk_client_get_data(InstrumentStore *dest);
 
-// Subscribe to a single path on the open WebSocket connection.
-// Adds the path to the store (valid=false) so it has a slot ready for data.
-void signalk_client_subscribe(const char *path, int period_ms);
+// Copy the current values of selected paths in a single locked pass.
+// out[i] receives the entry for paths[i]; missing paths are returned with
+// valid=false. Returns false if the store is unavailable.
+bool signalk_client_get_values(const char *const *paths, int count, PathValue *out);
 
-// Unsubscribe from a single path and remove it from the store.
+// Subscribe to a single path. Subscriptions are reference-counted and are
+// re-sent automatically whenever the WebSocket (re)connects.
+// Adds the path to the store (valid=false) so it has a slot ready for data.
+// Returns false if the store is full.
+bool signalk_client_subscribe(const char *path, int period_ms);
+
+// Release one reference to a path. When the last reference is released the
+// server subscription is cancelled and the store slot freed. The built-in
+// initial paths (autopilot / wind rose) are never released.
 void signalk_client_unsubscribe(const char *path);
+
+// Latest UTC time seen in the data stream (navigation.datetime preferred,
+// otherwise delta update timestamps; years before 2024 are ignored).
+// utc_s is extrapolated to now. source: 1 = GPS datetime, 2 = timestamp.
+// navigation.position (when subscribed) is stored as
+// navigation.position.latitude / .longitude in degrees.
+bool signalk_client_get_time(int64_t *utc_s, uint32_t *age_ms, int *source);
 
 // Observer: watch a single path for value changes.
 // When the path receives new data in parse_delta(), cb is invoked on the

@@ -1,0 +1,10 @@
+# Preserve the existing bootloader and custom partition-table layout.
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_PARTITION_TABLE_OFFSET=0x8000
+
+# SignalK continues to use the BSP audio path; do not enable Board Manager's
+# optional camera, audio-codec, or filesystem integrations.
+CONFIG_ESP_BOARD_DEV_AUDIO_CODEC_SUPPORT=n
+CONFIG_ESP_BOARD_DEV_CAMERA_SUPPORT=n
+CONFIG_ESP_BOARD_DEV_FS_FAT_SUPPORT=n
+CONFIG_ESP_BOARD_DEV_FS_SPIFFS_SUPPORT=n
